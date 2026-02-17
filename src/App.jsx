@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
+import { Analytics } from "@vercel/analytics/react";
 
 const API_URL = "";
 
@@ -421,6 +422,7 @@ export default function LuxuryTracker() {
         ::placeholder { color: #4a4540; }
         @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
+      <Analytics />
     </div>
   );
 }
