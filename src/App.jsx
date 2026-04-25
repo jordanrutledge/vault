@@ -62,13 +62,12 @@ async function searchAPI(query) {
   }
 }
 
-// Fallback local database for instant results while API loads
-const POPULAR = [
-  { id:"p1", brand:"Hermès", name:"Birkin 25", category:"Handbags", image:"👜", avgPrice:14500, highPrice:19000, lowPrice:11000, trend:3.8, recentSales:42, sources:["The RealReal","Vestiaire Collective","Rebag"], notes:"Most sought-after size; search for live pricing" },
-  { id:"p2", brand:"Rolex", name:"Daytona 116500LN", category:"Watches", image:"⌚", avgPrice:28500, highPrice:34000, lowPrice:24000, trend:1.8, recentSales:92, sources:["Chrono24","StockX","Bob's Watches"], notes:"White dial commands premium; search for live pricing" },
-  { id:"p3", brand:"Chanel", name:"Classic Flap Medium", category:"Handbags", image:"👜", avgPrice:9200, highPrice:11000, lowPrice:7500, trend:3.5, recentSales:72, sources:["The RealReal","Vestiaire Collective","Fashionphile"], notes:"Caviar leather; search for live pricing" },
-  { id:"p4", brand:"Cartier", name:"Love Bracelet", category:"Jewelry", image:"💎", avgPrice:6500, highPrice:7500, lowPrice:5600, trend:1.5, recentSales:160, sources:["The RealReal","Fashionphile","Rebag"], notes:"Yellow gold; search for live pricing" },
-  { id:"p5", brand:"Patek Philippe", name:"Nautilus 5711", category:"Watches", image:"⌚", avgPrice:128000, highPrice:155000, lowPrice:105000, trend:-2.8, recentSales:14, sources:["Chrono24","Phillips","Sotheby's"], notes:"Discontinued; search for live pricing" },
+// Suggested searches — no static prices, users search for live data
+const POPULAR_SEARCHES = [
+  "Rolex Daytona", "Hermès Birkin", "Chanel Classic Flap",
+  "Cartier Love Bracelet", "Patek Philippe Nautilus",
+  "Louis Vuitton Neverfull", "AP Royal Oak", "Van Cleef Alhambra",
+  "Omega Speedmaster", "Goyard St Louis",
 ];
 
 export default function LuxuryTracker() {
@@ -80,7 +79,7 @@ export default function LuxuryTracker() {
   const [searchError, setSearchError] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [conditionModal, setConditionModal] = useState(null);
-  const [allItems, setAllItems] = useState([...POPULAR]);
+  const [allItems, setAllItems] = useState([]);
   const [platformStatus, setPlatformStatus] = useState(null);
 
   const totalValue = owned.reduce((sum, o) => {
@@ -157,9 +156,7 @@ export default function LuxuryTracker() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 12 }}>
           <div>
             <div style={{ fontSize: 22, letterSpacing: "-0.02em" }}>{fmt(item.avgPrice)}</div>
-            {item.trend !== 0 && <div style={{ fontSize: 12, fontFamily: sans, fontWeight: 500, marginTop: 2, color: item.trend >= 0 ? "#34d399" : "#f87171" }}>{item.trend >= 0 ? "↑" : "↓"} {Math.abs(item.trend)}% (30d)</div>}
           </div>
-          <MiniChart trend={item.trend} seed={idx} />
         </div>
         <div style={{ fontSize: 11, color: "#4a4540", fontFamily: sans, marginBottom: 6 }}>
           {fmt(item.lowPrice)} – {fmt(item.highPrice)}{item.recentSales > 0 ? ` · ${item.recentSales} listings` : ""}
@@ -306,7 +303,7 @@ export default function LuxuryTracker() {
           <div>
             <div style={{ marginBottom: 24 }}>
               <h2 style={{ fontSize: 28, fontWeight: 400, letterSpacing: "-0.02em", marginBottom: 8 }}>Search Luxury Goods</h2>
-              <p style={{ fontSize: 14, color: "#6a6560", fontFamily: sans, marginBottom: 20 }}>Live resale data from The RealReal, Chrono24, StockX, eBay, Vestiaire & more</p>
+              <p style={{ fontSize: 14, color: "#6a6560", fontFamily: sans, marginBottom: 20 }}>Live resale data from eBay sold listings & Fashionphile</p>
 
               <div style={{ display: "flex", gap: 10 }}>
                 <div style={{ position: "relative", flex: 1 }}>
@@ -326,7 +323,7 @@ export default function LuxuryTracker() {
                 <div style={{ marginTop: 24 }}>
                   <div style={{ fontSize: 11, color: "#4a4540", fontFamily: sans, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Try searching for</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                    {["Rolex Daytona", "Hermès Birkin", "Chanel Classic Flap", "Patek Philippe Nautilus", "Cartier Love Bracelet", "Louis Vuitton Neverfull", "AP Royal Oak", "Van Cleef Alhambra"].map(s => (
+                    {POPULAR_SEARCHES.map(s => (
                       <button key={s} onClick={() => { setSearch(s); }}
                         style={{ padding: "8px 16px", borderRadius: 20, border: `1px solid ${whiteA(0.08)}`, background: whiteA(0.02), color: "#8a8580", cursor: "pointer", fontSize: 13, fontFamily: sans, transition: "all 0.15s" }}
                         onMouseEnter={e => { e.currentTarget.style.borderColor = goldA(0.3); e.currentTarget.style.color = gold; }}
@@ -344,7 +341,7 @@ export default function LuxuryTracker() {
               <div style={{ textAlign: "center", padding: "60px 24px" }}>
                 <div style={{ width: 48, height: 48, margin: "0 auto 20px", borderRadius: "50%", border: `2px solid ${goldA(0.15)}`, borderTopColor: gold, animation: "spin 1s linear infinite" }} />
                 <p style={{ fontSize: 16, color: "#8a8580", marginBottom: 8 }}>Searching resale platforms...</p>
-                <p style={{ fontSize: 13, color: "#4a4540", fontFamily: sans }}>Scraping live data from 6 platforms</p>
+                <p style={{ fontSize: 13, color: "#4a4540", fontFamily: sans }}>Fetching live data from eBay & Fashionphile</p>
               </div>
             )}
 
@@ -367,15 +364,6 @@ export default function LuxuryTracker() {
               </div>
             )}
 
-            {/* Popular items when no search */}
-            {!searching && searchResults.length === 0 && !searchError && !search && (
-              <div style={{ marginTop: 16 }}>
-                <div style={{ fontSize: 11, color: "#4a4540", fontFamily: sans, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 16 }}>Popular Items</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
-                  {POPULAR.map((item, ri) => renderItem(item, ri, "popular"))}
-                </div>
-              </div>
-            )}
           </div>
         )}
       </main>
