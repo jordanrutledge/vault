@@ -13,7 +13,7 @@ const CONDITIONS = [
 const POPULAR_SEARCHES = [
   "Rolex Daytona", "Hermès Birkin", "Chanel Classic Flap",
   "Cartier Love Bracelet", "Patek Philippe Nautilus",
-  "Louis Vuitton Neverfull", "AP Royal Oak", "Van Cleef Alhambra",
+  "Louis Vuitton Neverfull", "Audemars Piguet Royal Oak", "Van Cleef Alhambra",
   "Omega Speedmaster", "Goyard St Louis",
 ];
 

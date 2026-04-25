@@ -4,22 +4,48 @@ const NodeCache = require("node-cache");
 const cache = new NodeCache({ stdTTL: 900 });
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
+// ── Query normalization: expand abbreviations before searching ──
+const QUERY_ALIASES = {
+  "^ap\\b": "Audemars Piguet",
+  "\\bap\\s": "Audemars Piguet ",
+  "\\bapc\\b": "Audemars Piguet",
+  "\\blv\\b": "Louis Vuitton",
+  "\\bysl\\b": "Saint Laurent",
+  "\\bcc\\b": "Chanel",
+  "\\bpp\\b": "Patek Philippe",
+  "\\bvc&a\\b": "Van Cleef",
+  "\\bvca\\b": "Van Cleef",
+  "\\btrr\\b": "The RealReal",
+  "\\brl\\b": "Rolex",
+  "\\bcc flap\\b": "Chanel Classic Flap",
+  "\\broyal oak\\b": "Royal Oak",
+};
+
+function normalizeQuery(q) {
+  let normalized = q.trim();
+  for (const [pattern, replacement] of Object.entries(QUERY_ALIASES)) {
+    normalized = normalized.replace(new RegExp(pattern, "i"), replacement);
+  }
+  return normalized.trim();
+}
+
 function parsePrice(t) {
   const m = (t || "").replace(/,/g, "").match(/[\d.]+/);
   return m ? parseFloat(m[0]) : 0;
 }
 
 const BRANDS = [
-  "Rolex","Patek Philippe","Audemars Piguet","Omega","Cartier",
-  "Hermès","Hermes","Chanel","Louis Vuitton","Gucci","Prada","Dior",
-  "Christian Dior","Goyard","Van Cleef & Arpels","Van Cleef","Tiffany",
-  "Bottega Veneta","Celine","Bulgari","Bvlgari","Nike",
-  "Christian Louboutin","IWC","Tudor","Breitling","Hublot","Panerai",
-  "Messika","Chopard","Fendi","Balenciaga","Saint Laurent","YSL",
-  "Valentino","Givenchy","Loewe","Miu Miu","Versace","Burberry",
-  "Chloe","Rimowa","Montblanc","David Yurman","John Hardy",
-  "TAG Heuer","Zenith","Jaeger-LeCoultre","Vacheron Constantin",
-  "A. Lange","Richard Mille","Piaget","Baume & Mercier",
+  "Rolex", "Patek Philippe", "Audemars Piguet", "Omega", "Cartier",
+  "Hermès", "Hermes", "Chanel", "Louis Vuitton", "Gucci", "Prada", "Dior",
+  "Christian Dior", "Goyard", "Van Cleef & Arpels", "Van Cleef", "Tiffany",
+  "Bottega Veneta", "Celine", "Bulgari", "Bvlgari", "Nike",
+  "Christian Louboutin", "IWC", "Tudor", "Breitling", "Hublot", "Panerai",
+  "Messika", "Chopard", "Fendi", "Balenciaga", "Saint Laurent", "YSL",
+  "Valentino", "Givenchy", "Loewe", "Miu Miu", "Versace", "Burberry",
+  "Chloe", "Rimowa", "Montblanc", "David Yurman", "John Hardy",
+  "TAG Heuer", "Zenith", "Jaeger-LeCoultre", "Vacheron Constantin",
+  "A. Lange", "Richard Mille", "Piaget", "Baume & Mercier", "Roger Dubuis",
+  "Mikimoto", "Harry Winston", "Graff", "Buccellati", "Pomellato",
 ];
 
 function extractBrand(name) {
@@ -42,46 +68,55 @@ function cleanName(name) {
 
 function classify(name, brand) {
   const n = (brand + " " + name).toLowerCase();
-  if (/watch|daytona|submariner|nautilus|royal oak|speedmaster|datejust|gmt[-\s]?master|aquanaut|santos|tank\s|seamaster|explorer|day-date|sky-dweller|oyster perpetual|chronograph|cosmograph|moonwatch|carrera|navitimer|luminor|big bang|pelagos|constellation|de ville/i.test(n)) return "Watches";
-  if (/birkin|kelly\s|bag|flap|neverfull|speedy|pochette|boy bag|wallet on chain|saddle|lady dior|cassette|luggage|picotin|evelyne|constance|keepall|alma|tote|clutch|satchel|hobo|shoulder|handbag|purse|backpack|nano|mini\s.*bag|book tote|deauville|gabrielle|19\s.*bag|coco handle|trendy cc|business affinity/i.test(n)) return "Handbags";
-  if (/bracelet|necklace|ring|pendant|earring|brooch|love\s|juste un clou|alhambra|serpenti|cuff|bangle|choker|chain\s|panthère|clash\s|trinity|nail\s/i.test(n)) return "Jewelry";
+  if (/watch|daytona|submariner|nautilus|royal oak|speedmaster|datejust|gmt[-\s]?master|aquanaut|santos|tank\s|seamaster|explorer|day-date|sky-dweller|oyster perpetual|chronograph|cosmograph|moonwatch|carrera|navitimer|luminor|big bang|pelagos|constellation|de ville|offshore|octo|portugieser/i.test(n)) return "Watches";
+  if (/birkin|kelly\s|bag|flap|neverfull|speedy|pochette|boy bag|wallet on chain|saddle|lady dior|cassette|luggage|picotin|evelyne|constance|keepall|alma|tote|clutch|satchel|hobo|shoulder|handbag|purse|backpack|nano|mini\s.*bag|book tote|deauville|gabrielle|coco handle|trendy cc|business affinity|puzzle|loewe|paloma/i.test(n)) return "Handbags";
+  if (/bracelet|necklace|ring|pendant|earring|brooch|love\s|juste un clou|alhambra|serpenti|cuff|bangle|choker|chain\s|panthère|clash\s|trinity|nail\s|pearl|diamond\s.*jewelry/i.test(n)) return "Jewelry";
   if (/shoe|sneaker|boot|heel|pump|jordan|dunk|louboutin|sandal|mule|flat|trainer|derby|oxford|loafer|espadrille|slingback/i.test(n)) return "Shoes";
   return "Accessories";
 }
 
-// ── Fashionphile (Shopify Suggest JSON) ──
-async function scrapeFashionphile(query, limit) {
-  const results = [];
-  try {
-    const c = new AbortController();
-    const t = setTimeout(() => c.abort(), 10000);
-    const r = await fetch(
-      "https://www.fashionphile.com/search/suggest.json?q=" +
-        encodeURIComponent(query) +
-        "&resources[type]=product&resources[limit]=" + limit,
-      { headers: { "User-Agent": UA, Accept: "application/json" }, signal: c.signal }
-    );
-    clearTimeout(t);
-    const data = await r.json();
-    const products = data?.resources?.results?.products || [];
-    for (const p of products) {
-      const price = parseFloat(p.price) || parseFloat(p.compare_at_price_min) || 0;
-      if (price <= 0) continue;
-      const title = p.title || "";
-      const brand = extractBrand(title) || extractBrand(query);
-      results.push({
-        name: title,
-        brand: brand || query.split(" ")[0],
-        price,
-        condition: p.available ? "Pre-owned" : "Sold",
-        platform: "Fashionphile",
-        url: p.url ? "https://www.fashionphile.com" + p.url : "",
-        imageUrl: p.image || "",
-      });
-    }
-  } catch (e) { console.error("[Fashionphile]", e.message); }
-  return results;
+// ── Generic Shopify Suggest Scraper factory ──
+function makeShopifyScraper(domain, platformName) {
+  return async function(query, limit) {
+    const results = [];
+    try {
+      const c = new AbortController();
+      const t = setTimeout(() => c.abort(), 9000);
+      const r = await fetch(
+        `https://${domain}/search/suggest.json?q=${encodeURIComponent(query)}&resources[type]=product&resources[limit]=${limit}`,
+        { headers: { "User-Agent": UA, Accept: "application/json" }, signal: c.signal }
+      );
+      clearTimeout(t);
+      if (!r.ok) return results;
+      const data = await r.json();
+      const products = data?.resources?.results?.products || [];
+      for (const p of products) {
+        const price = parseFloat(p.price) || parseFloat(p.compare_at_price_min) || 0;
+        if (price <= 0) continue;
+        const title = p.title || "";
+        const brand = extractBrand(title) || extractBrand(query);
+        results.push({
+          name: title,
+          brand: brand || query.split(" ")[0],
+          price,
+          condition: "Pre-owned",
+          platform: platformName,
+          url: p.url ? `https://${domain}${p.url}` : "",
+          imageUrl: p.image || p.featured_image?.url || "",
+        });
+      }
+    } catch (e) { console.error(`[${platformName}]`, e.message); }
+    return results;
+  };
 }
+
+const scrapeFashionphile = makeShopifyScraper("www.fashionphile.com", "Fashionphile");
+const scrapeRebag        = makeShopifyScraper("shop.rebag.com", "Rebag");
+const scrapeMadisonAve   = makeShopifyScraper("www.madisonavenuecouture.com", "Madison Avenue Couture");
+const scrapePrivePorter  = makeShopifyScraper("www.priveporter.com", "Privé Porter");
+const scrapeAnns         = makeShopifyScraper("www.annsfabulousfinds.com", "Ann's Fabulous Finds");
+const scrapeBeladora     = makeShopifyScraper("www.beladora.com", "Beladora");
+const scrapeLuxeDH       = makeShopifyScraper("www.luxedh.com", "LuxeDH");
 
 // ── eBay Sold Listings (HTML scrape) ──
 async function scrapeEbay(query, limit) {
@@ -97,7 +132,8 @@ async function scrapeEbay(query, limit) {
     clearTimeout(t);
     const html = await r.text();
     const $ = cheerio.load(html);
-    const queryWords = query.toLowerCase().split(/\s+/);
+    // Build relevance words from query — use ALL words since query is already normalized
+    const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
 
     $("[data-view]").each((i, el) => {
       if (results.length >= limit) return false;
@@ -106,18 +142,18 @@ async function scrapeEbay(query, limit) {
       if (!link.length) return;
       const rawName = link.text().trim();
       const name = cleanName(rawName);
-      if (!name || name.length < 10) return;
+      if (!name || name.length < 8) return;
 
-      // Relevance: require majority of query words
+      // Relevance: at least 1 significant query word must appear (more lenient)
       const nameLower = name.toLowerCase();
       const matchCount = queryWords.filter(w => nameLower.includes(w)).length;
-      if (matchCount < Math.min(2, queryWords.length)) return;
+      if (queryWords.length > 0 && matchCount === 0) return;
 
       const text = $el.text();
       const priceMatch = text.match(/\$([\d,]+\.?\d*)/);
       if (!priceMatch) return;
       const price = parseFloat(priceMatch[1].replace(/,/g, ""));
-      if (price <= 0 || price < 50) return;
+      if (price <= 0 || price < 100) return;
 
       const href = link.attr("href") || "";
       const img = $el.find("img").attr("src") || "";
@@ -133,103 +169,31 @@ async function scrapeEbay(query, limit) {
   return results;
 }
 
-// ── LuxeDH (Shopify Suggest JSON) ──
-async function scrapeLuxeDH(query, limit) {
-  const results = [];
-  try {
-    const c = new AbortController();
-    const t = setTimeout(() => c.abort(), 8000);
-    const r = await fetch(
-      "https://www.luxedh.com/search/suggest.json?q=" +
-        encodeURIComponent(query) +
-        "&resources[type]=product&resources[limit]=" + limit,
-      { headers: { "User-Agent": UA, Accept: "application/json" }, signal: c.signal }
-    );
-    clearTimeout(t);
-    if (!r.ok) return results;
-    const data = await r.json();
-    const products = data?.resources?.results?.products || [];
-    for (const p of products) {
-      const price = parseFloat(p.price) || 0;
-      if (price <= 0) continue;
-      const title = p.title || "";
-      const brand = extractBrand(title) || extractBrand(query);
-      results.push({
-        name: title,
-        brand: brand || query.split(" ")[0],
-        price,
-        condition: "Pre-owned",
-        platform: "LuxeDH",
-        url: p.url ? "https://www.luxedh.com" + p.url : "",
-        imageUrl: p.image || "",
-      });
-    }
-  } catch (e) { console.error("[LuxeDH]", e.message); }
-  return results;
-}
-
-// ── Generic Shopify Suggest Scraper factory ──
-function makeShopifyScraper(domain, platformName) {
-  return async function(query, limit) {
-    const results = [];
-    try {
-      const c = new AbortController();
-      const t = setTimeout(() => c.abort(), 8000);
-      const r = await fetch(
-        `https://${domain}/search/suggest.json?q=${encodeURIComponent(query)}&resources[type]=product&resources[limit]=${limit}`,
-        { headers: { "User-Agent": UA, Accept: "application/json" }, signal: c.signal }
-      );
-      clearTimeout(t);
-      if (!r.ok) return results;
-      const data = await r.json();
-      const products = data?.resources?.results?.products || [];
-      for (const p of products) {
-        const price = parseFloat(p.price) || parseFloat(p.compare_at_price_min) || 0;
-        if (price <= 0) continue;
-        const title = p.title || "";
-        const brand = extractBrand(title) || extractBrand(query);
-        results.push({
-          name: title, brand: brand || query.split(" ")[0], price,
-          condition: "Pre-owned", platform: platformName,
-          url: p.url ? `https://${domain}${p.url}` : "",
-          imageUrl: p.image || p.featured_image?.url || "",
-        });
-      }
-    } catch (e) { console.error(`[${platformName}]`, e.message); }
-    return results;
-  };
-}
-
-const scrapeRebag = makeShopifyScraper("shop.rebag.com", "Rebag");
-const scrapeMadisonAve = makeShopifyScraper("www.madisonavenuecouture.com", "Madison Avenue Couture");
-const scrapePrivePorter = makeShopifyScraper("www.priveporter.com", "Privé Porter");
-const scrapeAnns = makeShopifyScraper("www.annsfabulousfinds.com", "Ann's Fabulous Finds");
-const scrapeBeladora = makeShopifyScraper("www.beladora.com", "Beladora");
-
 // ── Aggregation ──
-function aggregate(listings, query) {
+function aggregate(listings, originalQuery) {
   if (!listings.length) return [];
-  const queryBrand = extractBrand(query);
+  const queryBrand = extractBrand(originalQuery);
   const groups = {};
 
   for (const l of listings) {
-    const brand = l.brand || queryBrand || query.split(" ")[0];
+    const brand = l.brand || queryBrand || originalQuery.split(" ")[0];
     const normName = l.name.toLowerCase()
       .replace(/[^a-z0-9]/g, " ").replace(/\s+/g, " ").trim();
 
-    // Group by model number if present
-    const modelMatch = normName.match(/\b(\d{5,6}[a-z]{0,3})\b/);
+    // Group by model number if present (e.g. 116500ln, 5711/1a)
+    const modelMatch = normName.match(/\b(\d{4,6}[a-z\-\/]{0,5}\d*)\b/);
     const key = modelMatch
-      ? brand.toLowerCase() + "::" + modelMatch[1]
+      ? brand.toLowerCase() + "::" + modelMatch[1].replace(/[^a-z0-9]/g, "")
       : brand.toLowerCase() + "::" + normName.substring(0, 50);
 
     if (!groups[key]) groups[key] = { brand, name: l.name, listings: [], bestImg: null };
 
-    // Prefer cleaner names and better images
-    if (l.platform === "Fashionphile" || (l.platform === "LuxeDH" && !groups[key].listings.some(x => x.platform === "Fashionphile"))) {
+    // Prefer Shopify platform names (cleaner) over eBay
+    if (l.platform !== "eBay (Sold)" && !groups[key].listings.some(x => x.platform !== "eBay (Sold)")) {
       groups[key].name = l.name;
       groups[key].brand = brand;
     }
+    // Prefer Shopify CDN images
     if (l.imageUrl && l.imageUrl.includes("cdn.shopify") && !groups[key].bestImg) {
       groups[key].bestImg = l.imageUrl;
     }
@@ -241,6 +205,7 @@ function aggregate(listings, query) {
     const prices = g.listings.map(l => l.price).filter(p => p > 0);
     if (!prices.length) continue;
 
+    // IQR outlier removal for groups with enough data
     let cleanPrices = prices;
     if (prices.length >= 4) {
       const sorted = [...prices].sort((a, b) => a - b);
@@ -265,10 +230,6 @@ function aggregate(listings, query) {
       sources,
       sampleUrls: g.listings.filter(l => l.url).slice(0, 5).map(l => ({ platform: l.platform, url: l.url })),
       imageUrl: g.bestImg || g.listings.find(l => l.imageUrl)?.imageUrl || null,
-      conditions: g.listings.reduce((acc, l) => {
-        if (l.condition) acc[l.condition] = (acc[l.condition] || 0) + 1;
-        return acc;
-      }, {}),
     });
   }
 
@@ -283,44 +244,50 @@ module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept");
   if (req.method === "OPTIONS") return res.status(204).end();
 
-  let query, limit;
+  let rawQuery, limit;
   if (req.method === "GET") {
-    query = req.query.q;
+    rawQuery = req.query.q;
     limit = parseInt(req.query.limit) || 15;
   } else {
-    query = (req.body || {}).query;
+    rawQuery = (req.body || {}).query;
     limit = (req.body || {}).limit || 15;
   }
-  if (!query || query.trim().length < 2) {
+  if (!rawQuery || rawQuery.trim().length < 2) {
     return res.status(400).json({ error: "Query required (min 2 characters)" });
   }
-  const q = query.trim();
 
+  // Normalize the query (expand abbreviations)
+  const q = normalizeQuery(rawQuery.trim());
+
+  // Cache by normalized query
   const ck = "s:" + q.toLowerCase();
   const cached = cache.get(ck);
   if (cached) return res.status(200).json({ ...cached, cached: true });
 
   // Run all scrapers in parallel
   const limit10 = Math.min(limit, 10);
-  const [ebayResults, fpResults, luxeResults, rebagResults, macResults, ppResults, annsResults, beladoraResults] = await Promise.all([
+  const [
+    ebayResults, fpResults, rebagResults, macResults,
+    ppResults, annsResults, beladoraResults, luxeResults
+  ] = await Promise.all([
     scrapeEbay(q, limit).catch(() => []),
     scrapeFashionphile(q, limit).catch(() => []),
-    scrapeLuxeDH(q, limit10).catch(() => []),
     scrapeRebag(q, limit10).catch(() => []),
     scrapeMadisonAve(q, limit10).catch(() => []),
     scrapePrivePorter(q, limit10).catch(() => []),
     scrapeAnns(q, limit10).catch(() => []),
     scrapeBeladora(q, limit10).catch(() => []),
+    scrapeLuxeDH(q, limit10).catch(() => []),
   ]);
 
-  const all = [...ebayResults, ...fpResults, ...luxeResults, ...rebagResults, ...macResults, ...ppResults, ...annsResults, ...beladoraResults];
+  const all = [
+    ...ebayResults, ...fpResults, ...rebagResults, ...macResults,
+    ...ppResults, ...annsResults, ...beladoraResults, ...luxeResults
+  ];
   const items = aggregate(all, q);
 
-  const response = {
-    query: q,
-    totalListings: all.length,
-    items: items.slice(0, 25),
-    platforms: {
+  const activePlatforms = Object.fromEntries(
+    Object.entries({
       ebay: { name: "eBay (Sold)", count: ebayResults.length },
       fashionphile: { name: "Fashionphile", count: fpResults.length },
       rebag: { name: "Rebag", count: rebagResults.length },
@@ -329,7 +296,15 @@ module.exports = async function handler(req, res) {
       anns: { name: "Ann's Fabulous Finds", count: annsResults.length },
       beladora: { name: "Beladora", count: beladoraResults.length },
       luxedh: { name: "LuxeDH", count: luxeResults.length },
-    },
+    }).filter(([, v]) => v.count > 0)
+  );
+
+  const response = {
+    query: q,
+    originalQuery: rawQuery.trim() !== q ? rawQuery.trim() : undefined,
+    totalListings: all.length,
+    items: items.slice(0, 25),
+    platforms: activePlatforms,
     timestamp: new Date().toISOString(),
   };
 
