@@ -100,18 +100,25 @@ async function searchAPI(query) {
 // ── Landing Page ──
 function LandingPage({ onEnter, C, g, MONO, SERIF }) {
   const scrollRef = useRef(null);
-  const [scrollY, setScrollY] = useState(0);
+  const cardRef = useRef(null);
 
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el) return;
-    function onScroll() { setScrollY(el.scrollTop); }
+    const card = cardRef.current;
+    if (!el || !card) return;
+
+    function onScroll() {
+      const y = el.scrollTop;
+      const tilt = Math.max(0, 35 - (y / 500) * 35);
+      const sc = Math.min(1, 0.7 + (y / 500) * 0.3);
+      const shadow = `0 ${30 + tilt * 3}px ${80 + tilt * 6}px rgba(0,0,0,0.75), 0 0 80px rgba(196,160,82,0.06)`;
+      card.style.transform = `rotateX(${tilt}deg) scale(${sc})`;
+      card.style.boxShadow = shadow;
+    }
+
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
-
-  const tilt = Math.max(0, 35 - (scrollY / 500) * 35);
-  const sc = Math.min(1, 0.7 + (scrollY / 500) * 0.3);
 
   const BRANDS = ["Rolex", "Hermès", "Chanel", "Cartier", "Patek Philippe", "Louis Vuitton", "Audemars Piguet", "Van Cleef & Arpels", "Omega", "Goyard", "Dior", "Bottega Veneta", "Bulgari", "Tiffany & Co", "Prada"];
 
@@ -156,7 +163,8 @@ function LandingPage({ onEnter, C, g, MONO, SERIF }) {
 
         {/* 3D scroll card */}
         <div style={{ width: "100%", maxWidth: 860, perspective: "1400px", perspectiveOrigin: "50% -10%" }}>
-          <div style={{ width: "100%", transform: `rotateX(${tilt}deg) scale(${sc})`, transformOrigin: "top center", transition: "transform 0.04s linear", border: `1px solid ${g(0.18)}`, borderRadius: 6, overflow: "hidden", boxShadow: `0 ${30 + tilt * 3}px ${80 + tilt * 6}px rgba(0,0,0,0.75), 0 0 80px ${g(0.06)}` }}>
+          <div ref={cardRef}
+            style={{ width: "100%", transform: "rotateX(35deg) scale(0.7)", transformOrigin: "top center", border: `1px solid ${g(0.18)}`, borderRadius: 6, overflow: "hidden", boxShadow: `0 135px 290px rgba(0,0,0,0.75), 0 0 80px ${g(0.06)}`, willChange: "transform, box-shadow" }}>
             {/* Browser chrome */}
             <div style={{ background: "#111215", padding: "10px 14px", borderBottom: `1px solid ${g(0.1)}`, display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{ display: "flex", gap: 5 }}>{["#e05c5c","#d4a72c","#4aab7a"].map((c,i) => <div key={i} style={{ width: 9, height: 9, borderRadius: "50%", background: c, opacity: 0.7 }} />)}</div>
