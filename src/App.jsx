@@ -109,6 +109,8 @@ export default function LuxuryTracker() {
   const [addModal, setAddModal] = useState(null);
   const [editModal, setEditModal] = useState(null);
   const [detailModal, setDetailModal] = useState(null); // item detail popup
+  const [lightbox, setLightbox] = useState(false); // fullscreen image
+  const [searchHistory, setSearchHistory] = useState(() => { try { return JSON.parse(localStorage.getItem("vault_search_history") || "[]"); } catch { return []; } });
   const [allItems, setAllItems] = useState(() => loadItemCache());
   const [platformInfo, setPlatformInfo] = useState(null);
   const [hoveredCard, setHoveredCard] = useState(null);
@@ -185,8 +187,36 @@ export default function LuxuryTracker() {
     return { totalValue, costBasis, totalPnL: costBasis > 0 ? totalValue - costBasis : null, gainers, losers };
   }, [owned, allItems]);
 
+  // ── Keyboard shortcuts ──
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === "Escape") {
+        if (lightbox) { setLightbox(false); return; }
+        if (detailModal) { setDetailModal(null); return; }
+        if (addModal) { setAddModal(null); return; }
+        if (editModal) { setEditModal(null); return; }
+        if (authView) { setAuthView(null); return; }
+      }
+      // Arrow navigation between items in detail modal
+      if (detailModal && filteredResults.length > 1) {
+        const idx = filteredResults.findIndex(i => i.id === detailModal.id);
+        if (e.key === "ArrowRight" && idx < filteredResults.length - 1) setDetailModal(filteredResults[idx + 1]);
+        if (e.key === "ArrowLeft" && idx > 0) setDetailModal(filteredResults[idx - 1]);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightbox, detailModal, addModal, editModal, authView, filteredResults]);
+
   const handleSearch = useCallback(async () => {
     if (!search.trim()) return;
+    // Save to history
+    const q = search.trim();
+    setSearchHistory(prev => {
+      const next = [q, ...prev.filter(h => h !== q)].slice(0, 8);
+      try { localStorage.setItem("vault_search_history", JSON.stringify(next)); } catch {}
+      return next;
+    });
     setSearching(true); setSearchError(null); setSearchResults([]); setPlatformInfo(null);
     setFiltersOpen(false); setFilterCat("All"); setFilterPlatform("All"); setFilterMinPrice(""); setFilterMaxPrice("");
     try {
@@ -515,116 +545,241 @@ export default function LuxuryTracker() {
     const tc = trend === null ? C.textDim : trend >= 0 ? C.green : C.red;
     const spread = item.highPrice - item.lowPrice;
     const spreadPct = item.avgPrice > 0 ? Math.round((spread / item.avgPrice) * 100) : 0;
+    const currentIdx = filteredResults.findIndex(i => i.id === item.id);
+    const hasPrev = currentIdx > 0;
+    const hasNext = currentIdx < filteredResults.length - 1;
 
     return (
-      <div onClick={() => setDetailModal(null)}
-        style={{ position: "fixed", inset: 0, zIndex: 250, background: "rgba(0,0,0,0.88)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-        <div onClick={e => e.stopPropagation()}
-          style={{ background: C.surface, border: `1px solid ${C.border}`, maxWidth: 760, width: "100%", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 80px 160px rgba(0,0,0,0.8)", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
-
-          {/* Left: Large image */}
-          <div style={{ position: "relative", minHeight: 400, background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", borderRight: `1px solid ${C.border}` }}>
-            {item.imageUrl ? (
-              <img src={item.imageUrl} alt={item.name}
-                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", minHeight: 400 }}
-                onError={e => { e.target.style.display = "none"; }} />
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12 }}>
-                <div style={{ fontFamily: SERIF, fontSize: 60, color: C.textDim, opacity: 0.3 }}>
-                  {item.category === "Watches" ? "◷" : item.category === "Handbags" ? "◻" : item.category === "Jewelry" ? "◇" : "○"}
-                </div>
-                <div style={{ fontFamily: MONO, fontSize: 9, color: C.textDim, letterSpacing: "0.1em" }}>NO IMAGE</div>
-              </div>
-            )}
-            <div style={{ position: "absolute", top: 14, left: 14, padding: "4px 10px", background: "rgba(8,9,10,0.8)", border: `1px solid ${C.border}`, fontFamily: MONO, fontSize: 8, color: C.textMid, letterSpacing: "0.1em", textTransform: "uppercase", backdropFilter: "blur(8px)" }}>
-              {item.category}
-            </div>
-            <button onClick={() => setDetailModal(null)}
-              style={{ position: "absolute", top: 14, right: 14, width: 28, height: 28, background: "rgba(8,9,10,0.8)", border: `1px solid ${C.border}`, borderRadius: "50%", color: C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)" }}>
+      <>
+        {/* Lightbox — fullscreen image */}
+        {lightbox && item.imageUrl && (
+          <div onClick={() => setLightbox(false)}
+            style={{ position: "fixed", inset: 0, zIndex: 400, background: "rgba(0,0,0,0.97)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "zoom-out" }}>
+            <img src={item.imageUrl} alt={item.name}
+              style={{ maxWidth: "92vw", maxHeight: "92vh", objectFit: "contain", boxShadow: "0 40px 120px rgba(0,0,0,0.8)" }} />
+            <button onClick={() => setLightbox(false)}
+              style={{ position: "absolute", top: 20, right: 20, width: 36, height: 36, background: "rgba(255,255,255,0.08)", border: `1px solid ${C.border}`, borderRadius: "50%", color: C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center" }}>
               ×
             </button>
+            <div style={{ position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)", fontFamily: MONO, fontSize: 9, color: C.textDim, letterSpacing: "0.1em" }}>
+              PRESS ESC TO CLOSE
+            </div>
           </div>
+        )}
 
-          {/* Right: Details */}
-          <div style={{ padding: "32px 28px", display: "flex", flexDirection: "column", overflowY: "auto" }}>
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontFamily: MONO, fontSize: 9, color: C.gold, letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 8 }}>{item.brand}</div>
-              <div style={{ fontFamily: SERIF, fontSize: 22, color: C.text, lineHeight: 1.25 }}>{item.name}</div>
-            </div>
+        {/* Detail modal */}
+        <div onClick={() => setDetailModal(null)}
+          style={{ position: "fixed", inset: 0, zIndex: 250, background: "rgba(0,0,0,0.92)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
 
-            <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: `1px solid ${C.border}` }}>
-              <div style={{ fontFamily: SERIF, fontSize: 44, color: C.text, letterSpacing: "-0.03em", lineHeight: 1, marginBottom: 10 }}>{fmt(item.avgPrice)}</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 8 }}>
-                {[{ l: "Low", v: fmt(item.lowPrice), c: C.red }, { l: "Average", v: fmt(item.avgPrice), c: C.textMid }, { l: "High", v: fmt(item.highPrice), c: C.green }].map(s => (
-                  <div key={s.l}>
-                    <div style={{ fontFamily: MONO, fontSize: 7, color: C.textDim, letterSpacing: "0.1em", marginBottom: 3, textTransform: "uppercase" }}>{s.l}</div>
-                    <div style={{ fontFamily: SERIF, fontSize: 14, color: s.c }}>{s.v}</div>
+          {/* Prev/Next arrow navigation */}
+          {hasPrev && (
+            <button onClick={e => { e.stopPropagation(); setDetailModal(filteredResults[currentIdx - 1]); setLightbox(false); }}
+              style={{ position: "fixed", left: 16, top: "50%", transform: "translateY(-50%)", zIndex: 260, width: 40, height: 40, background: "rgba(15,16,18,0.9)", border: `1px solid ${C.border}`, borderRadius: "50%", color: C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)", transition: "all 0.15s" }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = g(0.4); e.currentTarget.style.color = C.gold; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textMid; }}>
+              ‹
+            </button>
+          )}
+          {hasNext && (
+            <button onClick={e => { e.stopPropagation(); setDetailModal(filteredResults[currentIdx + 1]); setLightbox(false); }}
+              style={{ position: "fixed", right: 16, top: "50%", transform: "translateY(-50%)", zIndex: 260, width: 40, height: 40, background: "rgba(15,16,18,0.9)", border: `1px solid ${C.border}`, borderRadius: "50%", color: C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)", transition: "all 0.15s" }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = g(0.4); e.currentTarget.style.color = C.gold; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textMid; }}>
+              ›
+            </button>
+          )}
+
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: C.surface, border: `1px solid ${C.border}`, maxWidth: 820, width: "100%", maxHeight: "88vh", boxShadow: "0 80px 160px rgba(0,0,0,0.8)", display: "grid", gridTemplateColumns: "1fr 1fr", overflow: "hidden" }}>
+
+            {/* Left: Image panel */}
+            <div style={{ position: "relative", background: "#0a0b0c", display: "flex", alignItems: "center", justifyContent: "center", minHeight: 460, borderRight: `1px solid ${C.border}` }}>
+              {item.imageUrl ? (
+                <>
+                  <img src={item.imageUrl} alt={item.name}
+                    onClick={() => setLightbox(true)}
+                    style={{ width: "100%", height: "100%", minHeight: 460, objectFit: "contain", display: "block", padding: "20px", boxSizing: "border-box", cursor: "zoom-in", transition: "transform 0.3s ease" }}
+                    onMouseEnter={e => e.target.style.transform = "scale(1.03)"}
+                    onMouseLeave={e => e.target.style.transform = "scale(1)"}
+                    onError={e => e.target.style.display = "none"} />
+                  {/* Zoom hint */}
+                  <div onClick={() => setLightbox(true)}
+                    style={{ position: "absolute", bottom: 14, right: 14, padding: "4px 10px", background: "rgba(8,9,10,0.85)", border: `1px solid ${C.border}`, fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.08em", cursor: "zoom-in", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", gap: 4 }}>
+                    ⊕ FULL SIZE
                   </div>
-                ))}
-              </div>
-              {spreadPct > 0 && <div style={{ fontFamily: MONO, fontSize: 9, color: C.textDim }}>Market spread: ±{spreadPct}% · {item.numListings} listing{item.numListings !== 1 ? "s" : ""}</div>}
-            </div>
-
-            {ph.length >= 2 && (
-              <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: `1px solid ${C.border}` }}>
-                <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>Price History</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                  <Sparkline data={ph} width={140} height={40} color={tc} />
-                  <div>
-                    <div style={{ fontFamily: MONO, fontSize: 11, color: tc }}>{trend >= 0 ? "▲" : "▼"} {Math.abs(trend).toFixed(1)}%</div>
-                    <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, marginTop: 2 }}>{ph[0].date} → {ph[ph.length-1].date}</div>
+                </>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: 40 }}>
+                  <div style={{ fontFamily: SERIF, fontSize: 72, color: C.textDim, opacity: 0.15, lineHeight: 1 }}>
+                    {item.category === "Watches" ? "◷" : item.category === "Handbags" ? "◻" : item.category === "Jewelry" ? "◇" : item.category === "Shoes" ? "◁" : "○"}
+                  </div>
+                  <div style={{ fontFamily: MONO, fontSize: 9, color: C.textDim, letterSpacing: "0.12em", textAlign: "center" }}>
+                    NO IMAGE AVAILABLE
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: `1px solid ${C.border}` }}>
-              <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>Available On</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {(item.sampleUrls?.length > 0 ? item.sampleUrls : item.sources.map(s => ({ platform: s, url: null }))).map((u, i) => (
-                  u.url ? (
-                    <a key={i} href={u.url} target="_blank" rel="noopener noreferrer"
-                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 2, textDecoration: "none", transition: "border-color 0.15s" }}
-                      onMouseEnter={e => e.currentTarget.style.borderColor = g(0.3)}
-                      onMouseLeave={e => e.currentTarget.style.borderColor = C.border}>
-                      <span style={{ fontFamily: MONO, fontSize: 10, color: C.textMid }}>{u.platform}</span>
-                      <span style={{ fontFamily: MONO, fontSize: 10, color: C.gold }}>View ↗</span>
-                    </a>
-                  ) : (
-                    <div key={i} style={{ padding: "8px 12px", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 2 }}>
-                      <span style={{ fontFamily: MONO, fontSize: 10, color: C.textMid }}>{u.platform}</span>
-                    </div>
-                  )
-                ))}
+              {/* Top overlays */}
+              <div style={{ position: "absolute", top: 14, left: 14, display: "flex", gap: 6 }}>
+                <span style={{ padding: "3px 8px", background: "rgba(8,9,10,0.85)", border: `1px solid ${C.border}`, fontFamily: MONO, fontSize: 8, color: C.textMid, letterSpacing: "0.1em", textTransform: "uppercase", backdropFilter: "blur(8px)" }}>
+                  {item.category}
+                </span>
+                {io && <span style={{ padding: "3px 8px", background: g(0.2), border: `1px solid ${g(0.4)}`, fontFamily: MONO, fontSize: 8, color: C.gold, letterSpacing: "0.08em", backdropFilter: "blur(8px)" }}>IN VAULT</span>}
               </div>
-            </div>
 
-            {io && oe ? (
-              <div>
-                <div style={{ padding: "14px 16px", background: g(0.06), border: `1px solid ${C.borderGold}`, borderRadius: 2, marginBottom: 10 }}>
-                  <div style={{ fontFamily: MONO, fontSize: 8, color: C.gold, letterSpacing: "0.1em", marginBottom: 8, textTransform: "uppercase" }}>In Your Vault</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    <div><div style={{ fontFamily: MONO, fontSize: 7, color: C.textDim, marginBottom: 2 }}>CONDITION</div><div style={{ fontFamily: SERIF, fontSize: 13, color: C.text }}>{oe.condition}</div></div>
-                    {oe.purchasePrice && <div><div style={{ fontFamily: MONO, fontSize: 7, color: C.textDim, marginBottom: 2 }}>PAID</div><div style={{ fontFamily: SERIF, fontSize: 13, color: C.text }}>{fmt(oe.purchasePrice)}</div></div>}
-                    {oe.purchaseDate && <div><div style={{ fontFamily: MONO, fontSize: 7, color: C.textDim, marginBottom: 2 }}>PURCHASED</div><div style={{ fontFamily: MONO, fontSize: 10, color: C.textMid }}>{fmtDate(oe.purchaseDate)}</div></div>}
-                    {oe.purchasePrice && <div><div style={{ fontFamily: MONO, fontSize: 7, color: C.textDim, marginBottom: 2 }}>P&L</div><div style={{ fontFamily: SERIF, fontSize: 13, color: item.avgPrice >= oe.purchasePrice ? C.green : C.red }}>{item.avgPrice >= oe.purchasePrice ? "+" : ""}{fmt(item.avgPrice - oe.purchasePrice)}</div></div>}
-                  </div>
-                  {oe.tags?.length > 0 && <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 10 }}>{oe.tags.map(t => <span key={t} style={{ fontFamily: MONO, fontSize: 7, color: C.gold, padding: "2px 6px", border: `1px solid ${g(0.25)}`, borderRadius: 2 }}>{t}</span>)}</div>}
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => { setDetailModal(null); openEditModal(oe, item); }} style={{ flex: 1, padding: "10px", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 2, color: C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 9, letterSpacing: "0.08em" }}>EDIT ENTRY</button>
-                  <button onClick={() => { removeOwned(item.id); setDetailModal(null); }} style={{ padding: "10px 14px", background: "transparent", border: "1px solid rgba(224,92,92,0.2)", borderRadius: 2, color: C.red, cursor: "pointer", fontFamily: MONO, fontSize: 9 }}>REMOVE</button>
-                </div>
-              </div>
-            ) : (
-              <button onClick={() => { setDetailModal(null); openAddModal(item); }}
-                style={{ width: "100%", padding: "13px", background: C.gold, border: "none", borderRadius: 2, color: C.bg, cursor: "pointer", fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", fontWeight: 500 }}>
-                Add to Vault
+              {/* Close button */}
+              <button onClick={() => setDetailModal(null)}
+                style={{ position: "absolute", top: 14, right: 14, width: 28, height: 28, background: "rgba(8,9,10,0.85)", border: `1px solid ${C.border}`, borderRadius: "50%", color: C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)" }}>
+                ×
               </button>
-            )}
+
+              {/* Item counter */}
+              {filteredResults.length > 1 && (
+                <div style={{ position: "absolute", bottom: 14, left: 14, fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.08em" }}>
+                  {currentIdx + 1} / {filteredResults.length}
+                </div>
+              )}
+            </div>
+
+            {/* Right: Details panel (scrollable) */}
+            <div style={{ display: "flex", flexDirection: "column", maxHeight: "88vh", overflow: "hidden" }}>
+              {/* Scrollable content */}
+              <div style={{ flex: 1, overflowY: "auto", padding: "28px 26px 0" }}>
+
+                {/* Brand + Name */}
+                <div style={{ marginBottom: 22 }}>
+                  <div style={{ fontFamily: MONO, fontSize: 9, color: C.gold, letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 8 }}>{item.brand}</div>
+                  <div style={{ fontFamily: SERIF, fontSize: 21, color: C.text, lineHeight: 1.25 }}>{item.name}</div>
+                </div>
+
+                {/* Price block */}
+                <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: `1px solid ${C.border}` }}>
+                  <div style={{ fontFamily: SERIF, fontSize: 42, color: C.text, letterSpacing: "-0.03em", lineHeight: 1, marginBottom: 10 }}>{fmt(item.avgPrice)}</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 8 }}>
+                    {[{ l: "Low", v: fmt(item.lowPrice), c: C.red }, { l: "Average", v: fmt(item.avgPrice), c: C.textMid }, { l: "High", v: fmt(item.highPrice), c: C.green }].map(s => (
+                      <div key={s.l}>
+                        <div style={{ fontFamily: MONO, fontSize: 7, color: C.textDim, letterSpacing: "0.1em", marginBottom: 3, textTransform: "uppercase" }}>{s.l}</div>
+                        <div style={{ fontFamily: SERIF, fontSize: 14, color: s.c }}>{s.v}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontFamily: MONO, fontSize: 9, color: C.textDim }}>
+                    {spreadPct > 0 ? `±${spreadPct}% spread · ` : ""}{item.numListings} listing{item.numListings !== 1 ? "s" : ""} across {item.sources.length} platform{item.sources.length !== 1 ? "s" : ""}
+                  </div>
+                </div>
+
+                {/* Condition value table */}
+                <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: `1px solid ${C.border}` }}>
+                  <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>Value by Condition</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    {CONDITIONS.map(c => (
+                      <div key={c.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", background: io && oe?.condition === c.label ? g(0.08) : "transparent", border: `1px solid ${io && oe?.condition === c.label ? g(0.2) : "transparent"}`, borderRadius: 2 }}>
+                        <div>
+                          <span style={{ fontFamily: MONO, fontSize: 9, color: io && oe?.condition === c.label ? C.gold : C.textMid }}>{c.label}</span>
+                          {io && oe?.condition === c.label && <span style={{ fontFamily: MONO, fontSize: 8, color: C.gold, marginLeft: 6 }}>← yours</span>}
+                        </div>
+                        <span style={{ fontFamily: SERIF, fontSize: 14, color: io && oe?.condition === c.label ? C.gold : C.textMid }}>{fmt(item.avgPrice * c.multiplier)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Price history */}
+                {ph.length >= 2 && (
+                  <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: `1px solid ${C.border}` }}>
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>Price History</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                      <Sparkline data={ph} width={140} height={44} color={tc} />
+                      <div>
+                        <div style={{ fontFamily: MONO, fontSize: 13, color: tc, marginBottom: 3 }}>{trend >= 0 ? "▲" : "▼"} {Math.abs(trend).toFixed(1)}%</div>
+                        <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim }}>{ph[0].date}</div>
+                        <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim }}>→ {ph[ph.length - 1].date}</div>
+                        <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, marginTop: 3 }}>{ph.length} data point{ph.length !== 1 ? "s" : ""}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Live listings */}
+                <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: `1px solid ${C.border}` }}>
+                  <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>Live Listings</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    {(item.sampleUrls?.length > 0 ? item.sampleUrls : item.sources.map(s => ({ platform: s, url: null }))).map((u, i) => (
+                      u.url ? (
+                        <a key={i} href={u.url} target="_blank" rel="noopener noreferrer"
+                          style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 12px", background: C.bg, border: `1px solid ${C.border}`, textDecoration: "none", transition: "all 0.15s", borderRadius: 1 }}
+                          onMouseEnter={e => { e.currentTarget.style.borderColor = g(0.35); e.currentTarget.style.background = g(0.04); }}
+                          onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.bg; }}>
+                          <span style={{ fontFamily: MONO, fontSize: 10, color: C.textMid }}>{u.platform}</span>
+                          <span style={{ fontFamily: MONO, fontSize: 10, color: C.gold }}>View listing ↗</span>
+                        </a>
+                      ) : (
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "9px 12px", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 1 }}>
+                          <span style={{ fontFamily: MONO, fontSize: 10, color: C.textMid }}>{u.platform}</span>
+                          <span style={{ fontFamily: MONO, fontSize: 9, color: C.textDim }}>No direct link</span>
+                        </div>
+                      )
+                    ))}
+                  </div>
+                </div>
+
+                {/* In Vault status */}
+                {io && oe && (
+                  <div style={{ marginBottom: 20, paddingBottom: 0 }}>
+                    <div style={{ padding: "14px 16px", background: g(0.06), border: `1px solid ${C.borderGold}`, borderRadius: 2, marginBottom: 10 }}>
+                      <div style={{ fontFamily: MONO, fontSize: 8, color: C.gold, letterSpacing: "0.1em", marginBottom: 10, textTransform: "uppercase" }}>Your Entry</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                        <div><div style={{ fontFamily: MONO, fontSize: 7, color: C.textDim, marginBottom: 3, textTransform: "uppercase" }}>Condition</div><div style={{ fontFamily: SERIF, fontSize: 14, color: C.text }}>{oe.condition}</div></div>
+                        {oe.purchasePrice && <div><div style={{ fontFamily: MONO, fontSize: 7, color: C.textDim, marginBottom: 3, textTransform: "uppercase" }}>Paid</div><div style={{ fontFamily: SERIF, fontSize: 14, color: C.text }}>{fmt(oe.purchasePrice)}</div></div>}
+                        {oe.purchaseDate && <div><div style={{ fontFamily: MONO, fontSize: 7, color: C.textDim, marginBottom: 3, textTransform: "uppercase" }}>Purchased</div><div style={{ fontFamily: MONO, fontSize: 10, color: C.textMid }}>{fmtDate(oe.purchaseDate)}</div></div>}
+                        {oe.purchaseLocation && <div><div style={{ fontFamily: MONO, fontSize: 7, color: C.textDim, marginBottom: 3, textTransform: "uppercase" }}>From</div><div style={{ fontFamily: MONO, fontSize: 10, color: C.textMid }}>{oe.purchaseLocation}</div></div>}
+                        {oe.serialNumber && <div><div style={{ fontFamily: MONO, fontSize: 7, color: C.textDim, marginBottom: 3, textTransform: "uppercase" }}>Serial</div><div style={{ fontFamily: MONO, fontSize: 10, color: C.textMid }}>{oe.serialNumber}</div></div>}
+                        {oe.purchasePrice && <div><div style={{ fontFamily: MONO, fontSize: 7, color: C.textDim, marginBottom: 3, textTransform: "uppercase" }}>P&L</div><div style={{ fontFamily: SERIF, fontSize: 14, color: item.avgPrice >= oe.purchasePrice ? C.green : C.red }}>{item.avgPrice >= oe.purchasePrice ? "+" : ""}{fmt(item.avgPrice - oe.purchasePrice)}</div></div>}
+                      </div>
+                      {oe.notes && <div style={{ marginTop: 10, fontFamily: MONO, fontSize: 9, color: C.textMid, padding: "6px 10px", background: w(0.03), borderRadius: 2 }}>{oe.notes}</div>}
+                      {oe.tags?.length > 0 && <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 10 }}>{oe.tags.map(t => <span key={t} style={{ fontFamily: MONO, fontSize: 7, color: C.gold, padding: "2px 6px", border: `1px solid ${g(0.25)}`, borderRadius: 2 }}>{t}</span>)}</div>}
+                    </div>
+                  </div>
+                )}
+
+                {/* Keyboard hint */}
+                {filteredResults.length > 1 && (
+                  <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, textAlign: "center", marginBottom: 16, letterSpacing: "0.06em" }}>
+                    ← → to navigate · ESC to close
+                  </div>
+                )}
+              </div>
+
+              {/* Sticky bottom CTA */}
+              <div style={{ padding: "14px 26px 18px", borderTop: `1px solid ${C.border}`, background: C.surface, flexShrink: 0 }}>
+                {io && oe ? (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => { setDetailModal(null); openEditModal(oe, item); }}
+                      style={{ flex: 1, padding: "11px", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 2, color: C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 9, letterSpacing: "0.1em", transition: "all 0.15s" }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = g(0.4); e.currentTarget.style.color = C.gold; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textMid; }}>
+                      EDIT ENTRY
+                    </button>
+                    <button onClick={() => { removeOwned(item.id); setDetailModal(null); }}
+                      style={{ padding: "11px 16px", background: "transparent", border: "1px solid rgba(224,92,92,0.2)", borderRadius: 2, color: C.red, cursor: "pointer", fontFamily: MONO, fontSize: 9, transition: "all 0.15s" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "rgba(224,92,92,0.08)"}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      REMOVE
+                    </button>
+                  </div>
+                ) : (
+                  <button onClick={() => { setDetailModal(null); openAddModal(item); }}
+                    style={{ width: "100%", padding: "13px", background: C.gold, border: "none", borderRadius: 2, color: C.bg, cursor: "pointer", fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", fontWeight: 500, transition: "opacity 0.15s" }}
+                    onMouseEnter={e => e.currentTarget.style.opacity = "0.9"}
+                    onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
+                    Add to Vault
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      </>
     );
   };
 
@@ -835,6 +990,24 @@ export default function LuxuryTracker() {
               </div>
               {!searching && !searchResults.length && !searchError && (
                 <div>
+                  {searchHistory.length > 0 && (
+                    <div style={{ marginBottom: 20 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                        <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.14em", textTransform: "uppercase" }}>Recent</div>
+                        <button onClick={() => { setSearchHistory([]); localStorage.removeItem("vault_search_history"); }} style={{ background: "none", border: "none", color: C.textDim, cursor: "pointer", fontFamily: MONO, fontSize: 8, padding: 0 }}>Clear</button>
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                        {searchHistory.map(s => (
+                          <button key={s} onClick={() => setSearch(s)}
+                            style={{ padding: "5px 11px", background: g(0.04), border: `1px solid ${g(0.15)}`, borderRadius: 2, color: C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", display: "flex", alignItems: "center", gap: 6, transition: "all 0.15s" }}
+                            onMouseEnter={e => { e.currentTarget.style.borderColor = g(0.4); e.currentTarget.style.color = C.gold; }}
+                            onMouseLeave={e => { e.currentTarget.style.borderColor = g(0.15); e.currentTarget.style.color = C.textMid; }}>
+                            <span style={{ color: C.textDim, fontSize: 10 }}>↩</span> {s}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 10 }}>Market Intelligence</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                     {POPULAR_SEARCHES.map(s => <button key={s} onClick={() => setSearch(s)} style={{ padding: "6px 12px", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 2, color: C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", transition: "all 0.15s" }} onMouseEnter={e => { e.currentTarget.style.borderColor = g(0.4); e.currentTarget.style.color = C.gold; }} onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textMid; }}>{s}</button>)}
