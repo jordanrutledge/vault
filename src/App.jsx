@@ -313,6 +313,7 @@ export default function LuxuryTracker() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
   const [authSuccess, setAuthSuccess] = useState(null);
+  const [syncStatus, setSyncStatus] = useState(null); // null | 'syncing' | 'synced' | 'error'
   const inputRef = useRef(null);
 
   // Add/edit form state
@@ -325,14 +326,118 @@ export default function LuxuryTracker() {
   const [formSerial, setFormSerial] = useState("");
   const [formCustomTag, setFormCustomTag] = useState("");
 
+  // ── Supabase sync helpers ──
+  async function syncPortfolioToSupabase(entries, userId) {
+    if (!supabase || !userId) return;
+    setSyncStatus("syncing");
+    try {
+      const rows = entries.map(o => {
+        const item = allItems.find(i => i.id === o.id);
+        return {
+          user_id: userId,
+          item_id: o.id,
+          item_key: item?.key || null,
+          item_data: item ? { brand: item.brand, name: item.name, category: item.category, avgPrice: item.avgPrice, highPrice: item.highPrice, lowPrice: item.lowPrice, numListings: item.numListings, sources: item.sources, imageUrl: item.imageUrl, sampleUrls: item.sampleUrls } : {},
+          condition: o.condition,
+          purchase_price: o.purchasePrice || null,
+          purchase_date: o.purchaseDate || null,
+          purchase_location: o.purchaseLocation || null,
+          tags: o.tags || [],
+          notes: o.notes || null,
+          serial_number: o.serialNumber || null,
+          added_date: o.addedDate || new Date().toISOString(),
+          updated_date: new Date().toISOString(),
+        };
+      });
+      if (rows.length > 0) {
+        await supabase.from("portfolios").upsert(rows, { onConflict: "user_id,item_id" });
+      }
+      const ownedIds = entries.map(o => o.id);
+      const { data: existing } = await supabase.from("portfolios").select("item_id").eq("user_id", userId);
+      const toDelete = (existing || []).map(r => r.item_id).filter(id => !ownedIds.includes(id));
+      if (toDelete.length > 0) {
+        await supabase.from("portfolios").delete().eq("user_id", userId).in("item_id", toDelete);
+      }
+      setSyncStatus("synced");
+      setTimeout(() => setSyncStatus(null), 3000);
+    } catch (e) {
+      console.error("[sync to supabase]", e.message);
+      setSyncStatus("error");
+      setTimeout(() => setSyncStatus(null), 4000);
+    }
+  }
+
+  async function loadPortfolioFromSupabase(userId) {
+    if (!supabase || !userId) return null;
+    try {
+      const { data, error } = await supabase.from("portfolios").select("*").eq("user_id", userId);
+      if (error || !data?.length) return null;
+      // Restore owned entries and item cache
+      const restoredOwned = data.map(r => ({
+        id: r.item_id,
+        condition: r.condition,
+        purchasePrice: r.purchase_price,
+        purchaseDate: r.purchase_date,
+        purchaseLocation: r.purchase_location,
+        tags: r.tags || [],
+        notes: r.notes,
+        serialNumber: r.serial_number,
+        addedDate: r.added_date,
+        updatedDate: r.updated_date,
+      }));
+      const restoredItems = data
+        .filter(r => r.item_data && r.item_data.name)
+        .map(r => ({ id: r.item_id, key: r.item_key, ...r.item_data }));
+      return { owned: restoredOwned, items: restoredItems };
+    } catch (e) { console.error("[load from supabase]", e.message); return null; }
+  }
+
   useEffect(() => {
     if (!supabase) return;
-    supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user ?? null));
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => setUser(session?.user ?? null));
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      const u = session?.user ?? null;
+      setUser(u);
+      if (u) {
+        const remote = await loadPortfolioFromSupabase(u.id);
+        if (remote) {
+          setOwned(remote.owned);
+          savePortfolio(remote.owned);
+          setAllItems(prev => {
+            const ex = new Set(prev.map(i => i.id));
+            const newItems = remote.items.filter(i => !ex.has(i.id));
+            const merged = [...prev, ...newItems];
+            saveItemCache(merged);
+            return merged;
+          });
+        }
+      }
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_e, session) => {
+      const u = session?.user ?? null;
+      setUser(u);
+      if (u) {
+        const remote = await loadPortfolioFromSupabase(u.id);
+        if (remote) {
+          setOwned(remote.owned);
+          savePortfolio(remote.owned);
+          setAllItems(prev => {
+            const ex = new Set(prev.map(i => i.id));
+            const newItems = remote.items.filter(i => !ex.has(i.id));
+            const merged = [...prev, ...newItems];
+            saveItemCache(merged);
+            return merged;
+          });
+        }
+      }
+    });
     return () => subscription.unsubscribe();
   }, []);
 
-  useEffect(() => { savePortfolio(owned); }, [owned]);
+  // Persist locally always; sync to Supabase when logged in
+  useEffect(() => {
+    savePortfolio(owned);
+    if (user) syncPortfolioToSupabase(owned, user.id);
+  }, [owned, user]);
   useEffect(() => { if (allItems.length) saveItemCache(allItems); }, [allItems]);
 
   useEffect(() => {
@@ -1015,6 +1120,14 @@ export default function LuxuryTracker() {
             ))}
             {supabase && (user ? (
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 16, paddingLeft: 16, borderLeft: `1px solid ${C.border}` }}>
+                {syncStatus && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <div style={{ width: 5, height: 5, borderRadius: "50%", background: syncStatus === "syncing" ? C.gold : syncStatus === "synced" ? C.green : C.red, opacity: syncStatus === "syncing" ? 0.8 : 1, animation: syncStatus === "syncing" ? "pulse 1s ease-in-out infinite" : "none" }} />
+                    <span style={{ fontFamily: MONO, fontSize: 8, color: syncStatus === "syncing" ? C.gold : syncStatus === "synced" ? C.green : C.red, letterSpacing: "0.06em" }}>
+                      {syncStatus === "syncing" ? "SAVING" : syncStatus === "synced" ? "SYNCED" : "SYNC ERROR"}
+                    </span>
+                  </div>
+                )}
                 <span style={{ fontFamily: MONO, fontSize: 9, color: C.textDim }}>{user.email?.split("@")[0]}</span>
                 <button onClick={() => supabase.auth.signOut()} style={{ padding: "5px 10px", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 2, color: C.textDim, cursor: "pointer", fontFamily: MONO, fontSize: 9 }}>OUT</button>
               </div>

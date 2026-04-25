@@ -1,10 +1,18 @@
 const fetch = require("node-fetch");
 const cheerio = require("cheerio");
-const NodeCache = require("node-cache");
-const cache = new NodeCache({ stdTTL: 900 });
+const { createClient } = require("@supabase/supabase-js");
+
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
+const supabase = SUPABASE_URL && SUPABASE_SERVICE_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+  : null;
+
+const CACHE_TTL_SECONDS = 6 * 60 * 60; // 6 hours
+
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
-// ── Query normalization: expand abbreviations before searching ──
+// ── Query normalization ──
 const QUERY_ALIASES = {
   "^ap\\b": "Audemars Piguet",
   "\\bap\\s": "Audemars Piguet ",
@@ -20,13 +28,33 @@ const QUERY_ALIASES = {
   "\\bcc flap\\b": "Chanel Classic Flap",
   "\\broyal oak\\b": "Royal Oak",
 };
-
 function normalizeQuery(q) {
-  let normalized = q.trim();
-  for (const [pattern, replacement] of Object.entries(QUERY_ALIASES)) {
-    normalized = normalized.replace(new RegExp(pattern, "i"), replacement);
-  }
-  return normalized.trim();
+  let n = q.trim();
+  for (const [p, r] of Object.entries(QUERY_ALIASES)) n = n.replace(new RegExp(p, "i"), r);
+  return n.trim();
+}
+
+// ── Supabase cache ──
+async function getCached(key) {
+  if (!supabase) return null;
+  try {
+    const { data } = await supabase
+      .from("search_cache")
+      .select("result, cached_at")
+      .eq("query_key", key)
+      .single();
+    if (!data) return null;
+    const age = (Date.now() - new Date(data.cached_at).getTime()) / 1000;
+    if (age > CACHE_TTL_SECONDS) return null;
+    return data.result;
+  } catch { return null; }
+}
+
+async function setCached(key, result) {
+  if (!supabase) return;
+  try {
+    await supabase.from("search_cache").upsert({ query_key: key, result, cached_at: new Date().toISOString() });
+  } catch (e) { console.error("[cache write]", e.message); }
 }
 
 function parsePrice(t) {
@@ -50,9 +78,7 @@ const BRANDS = [
 
 function extractBrand(name) {
   const l = name.toLowerCase();
-  for (const b of BRANDS) {
-    if (l.includes(b.toLowerCase())) return b;
-  }
+  for (const b of BRANDS) { if (l.includes(b.toLowerCase())) return b; }
   return "";
 }
 
@@ -62,8 +88,7 @@ function cleanName(name) {
     .replace(/Sponsored\s*$/gi, "")
     .replace(/New Listing\s*/gi, "")
     .replace(/Pre-Owned\s*/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
+    .replace(/\s+/g, " ").trim();
 }
 
 function classify(name, brand) {
@@ -75,7 +100,6 @@ function classify(name, brand) {
   return "Accessories";
 }
 
-// ── Generic Shopify Suggest Scraper factory ──
 function makeShopifyScraper(domain, platformName) {
   return async function(query, limit) {
     const results = [];
@@ -96,11 +120,8 @@ function makeShopifyScraper(domain, platformName) {
         const title = p.title || "";
         const brand = extractBrand(title) || extractBrand(query);
         results.push({
-          name: title,
-          brand: brand || query.split(" ")[0],
-          price,
-          condition: "Pre-owned",
-          platform: platformName,
+          name: title, brand: brand || query.split(" ")[0], price,
+          condition: "Pre-owned", platform: platformName,
           url: p.url ? `https://${domain}${p.url}` : "",
           imageUrl: p.image || p.featured_image?.url || "",
         });
@@ -118,7 +139,6 @@ const scrapeAnns         = makeShopifyScraper("www.annsfabulousfinds.com", "Ann'
 const scrapeBeladora     = makeShopifyScraper("www.beladora.com", "Beladora");
 const scrapeLuxeDH       = makeShopifyScraper("www.luxedh.com", "LuxeDH");
 
-// ── eBay Sold Listings (HTML scrape) ──
 async function scrapeEbay(query, limit) {
   const results = [];
   try {
@@ -132,9 +152,7 @@ async function scrapeEbay(query, limit) {
     clearTimeout(t);
     const html = await r.text();
     const $ = cheerio.load(html);
-    // Build relevance words from query — use ALL words since query is already normalized
     const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-
     $("[data-view]").each((i, el) => {
       if (results.length >= limit) return false;
       const $el = $(el);
@@ -143,22 +161,17 @@ async function scrapeEbay(query, limit) {
       const rawName = link.text().trim();
       const name = cleanName(rawName);
       if (!name || name.length < 8) return;
-
-      // Relevance: at least 1 significant query word must appear (more lenient)
       const nameLower = name.toLowerCase();
       const matchCount = queryWords.filter(w => nameLower.includes(w)).length;
       if (queryWords.length > 0 && matchCount === 0) return;
-
       const text = $el.text();
       const priceMatch = text.match(/\$([\d,]+\.?\d*)/);
       if (!priceMatch) return;
       const price = parseFloat(priceMatch[1].replace(/,/g, ""));
       if (price <= 0 || price < 100) return;
-
       const href = link.attr("href") || "";
       const img = $el.find("img").attr("src") || "";
       const brand = extractBrand(name) || extractBrand(query);
-
       results.push({
         name, brand: brand || query.split(" ")[0], price,
         condition: "Pre-owned", platform: "eBay (Sold)",
@@ -169,43 +182,31 @@ async function scrapeEbay(query, limit) {
   return results;
 }
 
-// ── Aggregation ──
 function aggregate(listings, originalQuery) {
   if (!listings.length) return [];
   const queryBrand = extractBrand(originalQuery);
   const groups = {};
-
   for (const l of listings) {
     const brand = l.brand || queryBrand || originalQuery.split(" ")[0];
-    const normName = l.name.toLowerCase()
-      .replace(/[^a-z0-9]/g, " ").replace(/\s+/g, " ").trim();
-
-    // Group by model number if present (e.g. 116500ln, 5711/1a)
+    const normName = l.name.toLowerCase().replace(/[^a-z0-9]/g, " ").replace(/\s+/g, " ").trim();
     const modelMatch = normName.match(/\b(\d{4,6}[a-z\-\/]{0,5}\d*)\b/);
     const key = modelMatch
       ? brand.toLowerCase() + "::" + modelMatch[1].replace(/[^a-z0-9]/g, "")
       : brand.toLowerCase() + "::" + normName.substring(0, 50);
-
     if (!groups[key]) groups[key] = { brand, name: l.name, listings: [], bestImg: null };
-
-    // Prefer Shopify platform names (cleaner) over eBay
     if (l.platform !== "eBay (Sold)" && !groups[key].listings.some(x => x.platform !== "eBay (Sold)")) {
       groups[key].name = l.name;
       groups[key].brand = brand;
     }
-    // Prefer Shopify CDN images
     if (l.imageUrl && l.imageUrl.includes("cdn.shopify") && !groups[key].bestImg) {
       groups[key].bestImg = l.imageUrl;
     }
     groups[key].listings.push(l);
   }
-
   const out = [];
   for (const g of Object.values(groups)) {
     const prices = g.listings.map(l => l.price).filter(p => p > 0);
     if (!prices.length) continue;
-
-    // IQR outlier removal for groups with enough data
     let cleanPrices = prices;
     if (prices.length >= 4) {
       const sorted = [...prices].sort((a, b) => a - b);
@@ -215,10 +216,8 @@ function aggregate(listings, originalQuery) {
       cleanPrices = prices.filter(p => p >= q1 - 1.5 * iqr && p <= q3 + 1.5 * iqr);
       if (!cleanPrices.length) cleanPrices = prices;
     }
-
     const avg = Math.round(cleanPrices.reduce((s, p) => s + p, 0) / cleanPrices.length);
     const sources = [...new Set(g.listings.map(l => l.platform))];
-
     out.push({
       brand: g.brand,
       name: cleanName(g.name),
@@ -232,12 +231,10 @@ function aggregate(listings, originalQuery) {
       imageUrl: g.bestImg || g.listings.find(l => l.imageUrl)?.imageUrl || null,
     });
   }
-
   out.sort((a, b) => b.numListings - a.numListings || b.avgPrice - a.avgPrice);
   return out;
 }
 
-// ── Handler ──
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -256,13 +253,14 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: "Query required (min 2 characters)" });
   }
 
-  // Normalize the query (expand abbreviations)
   const q = normalizeQuery(rawQuery.trim());
+  const cacheKey = "s:" + q.toLowerCase().replace(/\s+/g, " ");
 
-  // Cache by normalized query
-  const ck = "s:" + q.toLowerCase();
-  const cached = cache.get(ck);
-  if (cached) return res.status(200).json({ ...cached, cached: true });
+  // Check Supabase cache first
+  const cached = await getCached(cacheKey);
+  if (cached) {
+    return res.status(200).json({ ...cached, cached: true, cacheAge: cached.timestamp });
+  }
 
   // Run all scrapers in parallel
   const limit10 = Math.min(limit, 10);
@@ -308,6 +306,8 @@ module.exports = async function handler(req, res) {
     timestamp: new Date().toISOString(),
   };
 
-  cache.set(ck, response);
+  // Write to Supabase cache (fire and forget — don't block response)
+  setCached(cacheKey, response);
+
   return res.status(200).json(response);
 };
