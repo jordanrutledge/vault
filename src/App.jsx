@@ -69,11 +69,11 @@ function saveItemCache(i) { try { localStorage.setItem("vault_items", JSON.strin
 
 async function searchAPI(query) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 25000);
+  const timeout = setTimeout(() => controller.abort(), 28000);
   try {
     const resp = await fetch(`${API_URL}/api/search`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, limit: 15 }), signal: controller.signal,
+      body: JSON.stringify({ query, limit: 30 }), signal: controller.signal,
     });
     clearTimeout(timeout);
     const data = await resp.json();
@@ -283,6 +283,13 @@ export default function LuxuryTracker() {
     localStorage.setItem("vault_visited", "1");
     setShowLanding(false);
   }
+
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const [view, setView] = useState("portfolio");
   const [owned, setOwned] = useState(() => loadPortfolio());
@@ -758,7 +765,7 @@ export default function LuxuryTracker() {
             {/* Purchase details */}
             <div>
               <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>Purchase Details</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
                 <div>
                   <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, marginBottom: 5 }}>PRICE PAID</div>
                   <input type="number" placeholder="0" value={formPurchasePrice} onChange={e => setFormPurchasePrice(e.target.value)}
@@ -812,7 +819,7 @@ export default function LuxuryTracker() {
             </div>
 
             {/* Serial + Notes */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
               <div>
                 <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, marginBottom: 5 }}>SERIAL NUMBER</div>
                 <input type="text" placeholder="Optional" value={formSerial} onChange={e => setFormSerial(e.target.value)}
@@ -898,17 +905,17 @@ export default function LuxuryTracker() {
           )}
 
           <div onClick={e => e.stopPropagation()}
-            style={{ background: C.surface, border: `1px solid ${C.border}`, maxWidth: 820, width: "100%", maxHeight: "88vh", boxShadow: "0 80px 160px rgba(0,0,0,0.8)", display: "grid", gridTemplateColumns: "1fr 1fr", overflow: "hidden" }}>
+            style={{ background: C.surface, border: `1px solid ${C.border}`, maxWidth: 820, width: "100%", maxHeight: "88vh", boxShadow: "0 80px 160px rgba(0,0,0,0.8)", display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", overflow: "hidden" }}>
 
             {/* Left: Image panel */}
-            <div style={{ position: "relative", background: "#0a0b0c", display: "flex", alignItems: "center", justifyContent: "center", minHeight: 460, borderRight: `1px solid ${C.border}` }}>
+            <div style={{ position: "relative", background: "#0a0b0c", display: "flex", alignItems: "center", justifyContent: "center", minHeight: isMobile ? 220 : 460, borderRight: isMobile ? "none" : `1px solid ${C.border}`, borderBottom: isMobile ? `1px solid ${C.border}` : "none" }}>
               {item.imageUrl ? (
                 <>
                   <img src={item.imageUrl} alt={item.name}
                     onClick={() => setLightbox(true)}
-                    style={{ width: "100%", height: "100%", minHeight: 460, objectFit: "contain", display: "block", padding: "20px", boxSizing: "border-box", cursor: "zoom-in", transition: "transform 0.3s ease" }}
-                    onMouseEnter={e => e.target.style.transform = "scale(1.03)"}
-                    onMouseLeave={e => e.target.style.transform = "scale(1)"}
+                    style={{ width: "100%", height: "100%", minHeight: isMobile ? 220 : 460, objectFit: "contain", display: "block", padding: "16px", boxSizing: "border-box", cursor: "zoom-in", transition: "transform 0.3s ease" }}
+                    onMouseEnter={e => !isMobile && (e.target.style.transform = "scale(1.03)")}
+                    onMouseLeave={e => !isMobile && (e.target.style.transform = "scale(1)")}
                     onError={e => e.target.style.display = "none"} />
                   {/* Zoom hint */}
                   <div onClick={() => setLightbox(true)}
@@ -950,7 +957,7 @@ export default function LuxuryTracker() {
             </div>
 
             {/* Right: Details panel (scrollable) */}
-            <div style={{ display: "flex", flexDirection: "column", maxHeight: "88vh", overflow: "hidden" }}>
+            <div style={{ display: "flex", flexDirection: "column", maxHeight: isMobile ? "50vh" : "88vh", overflow: "hidden" }}>
               {/* Scrollable content */}
               <div style={{ flex: 1, overflowY: "auto", padding: "28px 26px 0" }}>
 
@@ -1096,49 +1103,54 @@ export default function LuxuryTracker() {
       <div style={{ position: "fixed", top: "15%", right: "-8%", width: "35vw", height: "35vw", background: `radial-gradient(ellipse,${g(0.04)} 0%,transparent 65%)`, pointerEvents: "none", zIndex: 0 }} />
       <div style={{ position: "fixed", bottom: "5%", left: "-5%", width: "28vw", height: "28vw", background: `radial-gradient(ellipse,${g(0.03)} 0%,transparent 70%)`, pointerEvents: "none", zIndex: 0 }} />
 
-      {/* Header */}
+      {/* ── HEADER ── */}
       <header style={{ position: "sticky", top: 0, zIndex: 100, borderBottom: `1px solid ${C.border}`, background: "rgba(8,9,10,0.94)", backdropFilter: "blur(24px)" }}>
-        <div style={{ maxWidth: 1120, margin: "0 auto", padding: "0 32px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 56 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+        <div style={{ maxWidth: 1120, margin: "0 auto", padding: isMobile ? "0 16px" : "0 32px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 52 }}>
+          {/* Logo */}
+          <button onClick={() => setShowLanding(true)} style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
               <rect x="1" y="1" width="18" height="18" stroke={C.gold} strokeWidth="1" fill="none"/>
               <rect x="4.5" y="4.5" width="11" height="11" fill={C.gold} opacity="0.15"/>
               <text x="10" y="14" textAnchor="middle" fill={C.gold} fontSize="9" fontFamily="Georgia,serif">V</text>
             </svg>
-            <span style={{ fontFamily: SERIF, fontSize: 17, letterSpacing: "0.22em", color: C.text, textTransform: "uppercase" }}>Vault</span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center" }}>
-            <button onClick={() => setShowLanding(true)} style={{ padding: "0 14px", height: 56, background: "none", border: "none", color: C.textDim, cursor: "pointer", fontFamily: MONO, fontSize: 9, letterSpacing: "0.1em", display: "flex", alignItems: "center", gap: 4, transition: "color 0.15s" }} onMouseEnter={e => e.currentTarget.style.color = C.gold} onMouseLeave={e => e.currentTarget.style.color = C.textDim}>
-              ‹ HOME
-            </button>
-            <div style={{ width: 1, height: 20, background: C.border, margin: "0 4px" }} />
-            {[{ key: "portfolio", label: owned.length > 0 ? `Portfolio (${owned.length})` : "Portfolio" }, { key: "search", label: "Search" }].map(v => (
+            {!isMobile && <span style={{ fontFamily: SERIF, fontSize: 15, letterSpacing: "0.22em", color: C.text, textTransform: "uppercase" }}>Vault</span>}
+          </button>
+
+          {/* Nav tabs */}
+          <div style={{ display: "flex", alignItems: "center", flex: isMobile ? 1 : "unset", justifyContent: isMobile ? "center" : "unset" }}>
+            {[{ key: "portfolio", label: isMobile ? `Portfolio${owned.length > 0 ? ` (${owned.length})` : ""}` : (owned.length > 0 ? `Portfolio (${owned.length})` : "Portfolio") }, { key: "search", label: "Search" }].map(v => (
               <button key={v.key} onClick={() => { setView(v.key); setSelectedItem(null); }}
-                style={{ padding: "0 18px", height: 56, background: "none", border: "none", borderBottom: view === v.key ? `1px solid ${C.gold}` : "1px solid transparent", color: view === v.key ? C.gold : C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", transition: "all 0.2s", marginBottom: -1 }}>
+                style={{ padding: isMobile ? "0 14px" : "0 18px", height: 52, background: "none", border: "none", borderBottom: view === v.key ? `1px solid ${C.gold}` : "1px solid transparent", color: view === v.key ? C.gold : C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: isMobile ? 9 : 10, letterSpacing: "0.12em", textTransform: "uppercase", transition: "all 0.2s", marginBottom: -1 }}>
                 {v.label}
               </button>
             ))}
+          </div>
+
+          {/* Auth / sync */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {syncStatus && (
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <div style={{ width: 5, height: 5, borderRadius: "50%", background: syncStatus === "syncing" ? C.gold : syncStatus === "synced" ? C.green : C.red, animation: syncStatus === "syncing" ? "pulse 1s ease-in-out infinite" : "none" }} />
+                {!isMobile && <span style={{ fontFamily: MONO, fontSize: 8, color: syncStatus === "syncing" ? C.gold : syncStatus === "synced" ? C.green : C.red, letterSpacing: "0.06em" }}>
+                  {syncStatus === "syncing" ? "SAVING" : syncStatus === "synced" ? "SYNCED" : "ERR"}
+                </span>}
+              </div>
+            )}
             {supabase && (user ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 16, paddingLeft: 16, borderLeft: `1px solid ${C.border}` }}>
-                {syncStatus && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <div style={{ width: 5, height: 5, borderRadius: "50%", background: syncStatus === "syncing" ? C.gold : syncStatus === "synced" ? C.green : C.red, opacity: syncStatus === "syncing" ? 0.8 : 1, animation: syncStatus === "syncing" ? "pulse 1s ease-in-out infinite" : "none" }} />
-                    <span style={{ fontFamily: MONO, fontSize: 8, color: syncStatus === "syncing" ? C.gold : syncStatus === "synced" ? C.green : C.red, letterSpacing: "0.06em" }}>
-                      {syncStatus === "syncing" ? "SAVING" : syncStatus === "synced" ? "SYNCED" : "SYNC ERROR"}
-                    </span>
-                  </div>
-                )}
-                <span style={{ fontFamily: MONO, fontSize: 9, color: C.textDim }}>{user.email?.split("@")[0]}</span>
-                <button onClick={() => supabase.auth.signOut()} style={{ padding: "5px 10px", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 2, color: C.textDim, cursor: "pointer", fontFamily: MONO, fontSize: 9 }}>OUT</button>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: 8, borderLeft: `1px solid ${C.border}` }}>
+                {!isMobile && <span style={{ fontFamily: MONO, fontSize: 9, color: C.textDim }}>{user.email?.split("@")[0]}</span>}
+                <button onClick={() => supabase.auth.signOut()} style={{ padding: "5px 8px", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 2, color: C.textDim, cursor: "pointer", fontFamily: MONO, fontSize: 9 }}>OUT</button>
               </div>
             ) : (
-              <button onClick={() => setAuthView("login")} style={{ marginLeft: 16, padding: "7px 14px", background: "transparent", border: `1px solid ${C.borderGold}`, borderRadius: 2, color: C.gold, cursor: "pointer", fontFamily: MONO, fontSize: 9, letterSpacing: "0.1em" }}>SIGN IN</button>
+              <button onClick={() => setAuthView("login")} style={{ padding: "6px 12px", background: "transparent", border: `1px solid ${C.borderGold}`, borderRadius: 2, color: C.gold, cursor: "pointer", fontFamily: MONO, fontSize: 9, letterSpacing: "0.1em" }}>
+                {isMobile ? "LOG IN" : "SIGN IN"}
+              </button>
             ))}
           </div>
         </div>
       </header>
 
-      <main style={{ maxWidth: 1120, margin: "0 auto", padding: "44px 32px 100px", position: "relative", zIndex: 1 }}>
+      <main style={{ maxWidth: 1120, margin: "0 auto", padding: isMobile ? "24px 16px 100px" : "44px 32px 100px", position: "relative", zIndex: 1 }}>
 
         {/* ── PORTFOLIO ── */}
         {view === "portfolio" && (
@@ -1212,6 +1224,49 @@ export default function LuxuryTracker() {
                 </svg>
                 <div style={{ fontFamily: SERIF, fontSize: 22, color: C.textMid, marginBottom: 10, fontWeight: 300 }}>Your portfolio is empty</div>
                 <button onClick={() => setView("search")} style={{ padding: "10px 28px", background: "transparent", border: `1px solid ${C.borderGold}`, borderRadius: 2, color: C.gold, cursor: "pointer", fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em" }} onMouseEnter={e => e.currentTarget.style.background = g(0.1)} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>Begin Search</button>
+              </div>
+            ) : isMobile ? (
+              /* ── MOBILE: stacked portfolio cards ── */
+              <div style={{ display: "flex", flexDirection: "column", gap: 1, background: C.border }}>
+                {owned.map((o) => {
+                  const item = allItems.find(i => i.id === o.id);
+                  if (!item) return null;
+                  const cond = CONDITIONS.find(c => c.label === o.condition);
+                  const val = item.avgPrice * (cond?.multiplier || 1);
+                  const pnl = o.purchasePrice ? val - o.purchasePrice : null;
+                  const isSel = selectedItem?.id === item.id;
+                  return (
+                    <div key={o.id} style={{ background: C.bg }}>
+                      <div onClick={() => setSelectedItem(isSel ? null : item)}
+                        style={{ padding: "14px 16px", cursor: "pointer", display: "flex", gap: 12, alignItems: "center" }}>
+                        {item.imageUrl ? <img src={item.imageUrl} alt="" style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 2, flexShrink: 0 }} onError={e => e.target.style.display="none"} /> : <div style={{ width: 48, height: 48, border: `1px solid ${C.border}`, borderRadius: 2, display: "flex", alignItems: "center", justifyContent: "center", color: C.textDim, flexShrink: 0 }}>○</div>}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontFamily: MONO, fontSize: 8, color: C.gold, letterSpacing: "0.1em", marginBottom: 2, textTransform: "uppercase" }}>{item.brand}</div>
+                          <div style={{ fontFamily: SERIF, fontSize: 14, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
+                          <div style={{ fontFamily: MONO, fontSize: 9, color: C.textDim, marginTop: 2 }}>{o.condition}</div>
+                        </div>
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
+                          <div style={{ fontFamily: SERIF, fontSize: 16, color: C.text }}>{fmt(val)}</div>
+                          {pnl !== null && <div style={{ fontFamily: MONO, fontSize: 9, color: pnl >= 0 ? C.green : C.red }}>{pnl >= 0 ? "+" : ""}{fmt(pnl)}</div>}
+                        </div>
+                      </div>
+                      {isSel && (
+                        <div style={{ padding: "12px 16px 16px", borderTop: `1px solid ${C.border}`, background: g(0.03) }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
+                            {[["Low", fmt(item.lowPrice), C.red], ["Market", fmt(item.avgPrice), C.textMid], ["High", fmt(item.highPrice), C.green]].map(([l, v, c]) => (
+                              <div key={l}><div style={{ fontFamily: MONO, fontSize: 7, color: C.textDim, marginBottom: 3, textTransform: "uppercase" }}>{l}</div><div style={{ fontFamily: SERIF, fontSize: 14, color: c }}>{v}</div></div>
+                            ))}
+                          </div>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button onClick={e => { e.stopPropagation(); openEditModal(o, item); }} style={{ flex: 1, padding: "9px", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 2, color: C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 9 }}>EDIT</button>
+                            <button onClick={e => { e.stopPropagation(); setDetailModal(item); }} style={{ flex: 1, padding: "9px", background: "transparent", border: `1px solid ${C.borderGold}`, borderRadius: 2, color: C.gold, cursor: "pointer", fontFamily: MONO, fontSize: 9 }}>DETAILS</button>
+                            <button onClick={e => { e.stopPropagation(); removeOwned(item.id); }} style={{ padding: "9px 12px", background: "transparent", border: "1px solid rgba(224,92,92,0.2)", borderRadius: 2, color: C.red, cursor: "pointer", fontFamily: MONO, fontSize: 9 }}>✕</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div>
@@ -1383,7 +1438,7 @@ export default function LuxuryTracker() {
                   </div>
                 )}
 
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 1, background: C.border }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(300px, 1fr))", gap: 1, background: C.border }}>
                   {filteredResults.map(item => <div key={item.id} style={{ background: C.bg }}>{renderCard(item)}</div>)}
                 </div>
                 {filteredResults.length === 0 && <div style={{ padding: "40px 0", textAlign: "center", fontFamily: MONO, fontSize: 10, color: C.textDim }}>No results match current filters</div>}

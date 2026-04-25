@@ -301,7 +301,7 @@ module.exports = async function handler(req, res) {
     query: q,
     originalQuery: rawQuery.trim() !== q ? rawQuery.trim() : undefined,
     totalListings: all.length,
-    items: items.slice(0, 25),
+    items: items.slice(0, 50),
     platforms: activePlatforms,
     timestamp: new Date().toISOString(),
   };
