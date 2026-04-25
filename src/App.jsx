@@ -5,7 +5,6 @@ const API_URL = "";
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 const supabase = SUPABASE_URL && SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
-
 const CONDITIONS = [
   { label: "New / Unworn", multiplier: 1.15, desc: "Tags attached, never used" },
   { label: "Excellent", multiplier: 1.0, desc: "Minimal signs of use" },
@@ -98,7 +97,185 @@ async function searchAPI(query) {
   }
 }
 
+// ── Landing Page ──
+function LandingPage({ onEnter, C, g, MONO, SERIF }) {
+  const scrollRef = useRef(null);
+  const [scrollY, setScrollY] = useState(0);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    function onScroll() { setScrollY(el.scrollTop); }
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const tilt = Math.max(0, 35 - (scrollY / 500) * 35);
+  const sc = Math.min(1, 0.7 + (scrollY / 500) * 0.3);
+
+  const BRANDS = ["Rolex", "Hermès", "Chanel", "Cartier", "Patek Philippe", "Louis Vuitton", "Audemars Piguet", "Van Cleef & Arpels", "Omega", "Goyard", "Dior", "Bottega Veneta", "Bulgari", "Tiffany & Co", "Prada"];
+
+  return (
+    <div ref={scrollRef} style={{ height: "100vh", overflowY: "auto", background: C.bg, color: C.text, fontFamily: SERIF, position: "relative" }}>
+      <div style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "80vw", height: "50vh", background: `radial-gradient(ellipse, ${g(0.07)} 0%, transparent 60%)`, pointerEvents: "none", zIndex: 0 }} />
+
+      {/* Nav */}
+      <header style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 50, padding: "0 40px", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(8,9,10,0.75)", backdropFilter: "blur(20px)", borderBottom: `1px solid ${g(0.08)}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="1" y="1" width="18" height="18" stroke={C.gold} strokeWidth="1" fill="none"/><rect x="4.5" y="4.5" width="11" height="11" fill={C.gold} opacity="0.15"/><text x="10" y="14" textAnchor="middle" fill={C.gold} fontSize="9" fontFamily="Georgia,serif">V</text></svg>
+          <span style={{ fontFamily: SERIF, fontSize: 15, letterSpacing: "0.22em", color: C.text, textTransform: "uppercase" }}>Vault</span>
+        </div>
+        <button onClick={onEnter} style={{ padding: "7px 18px", background: "transparent", border: `1px solid ${g(0.3)}`, borderRadius: 2, color: C.gold, cursor: "pointer", fontFamily: MONO, fontSize: 9, letterSpacing: "0.12em", transition: "all 0.15s" }}
+          onMouseEnter={e => e.currentTarget.style.background = g(0.1)} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+          ENTER APP
+        </button>
+      </header>
+
+      {/* Hero */}
+      <section style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", paddingTop: 52, paddingBottom: 40, paddingLeft: 24, paddingRight: 24, position: "relative", zIndex: 1, textAlign: "center" }}>
+        <div style={{ fontFamily: MONO, fontSize: 9, color: C.gold, letterSpacing: "0.2em", textTransform: "uppercase", marginBottom: 28, padding: "5px 14px", border: `1px solid ${g(0.25)}`, background: g(0.06), display: "inline-block" }}>
+          Luxury Resale Intelligence
+        </div>
+        <h1 style={{ fontFamily: SERIF, fontWeight: 300, fontSize: "clamp(40px, 7vw, 84px)", lineHeight: 1.06, letterSpacing: "-0.03em", color: C.text, maxWidth: 860, marginBottom: 24 }}>
+          Know what your <span style={{ color: C.gold, fontStyle: "italic" }}>collection</span> is worth
+        </h1>
+        <p style={{ fontFamily: MONO, fontSize: 11, color: C.textMid, letterSpacing: "0.05em", maxWidth: 500, lineHeight: 1.85, marginBottom: 44 }}>
+          Live resale market data for watches, handbags, and jewelry — aggregated across 8 platforms, updated in real time.
+        </p>
+        <div style={{ display: "flex", gap: 12, marginBottom: 72, flexWrap: "wrap", justifyContent: "center" }}>
+          <button onClick={onEnter} style={{ padding: "14px 40px", background: C.gold, border: "none", borderRadius: 2, color: C.bg, cursor: "pointer", fontFamily: MONO, fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", fontWeight: 500, transition: "opacity 0.15s" }} onMouseEnter={e => e.currentTarget.style.opacity = "0.85"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
+            Start Tracking
+          </button>
+          <button onClick={() => scrollRef.current?.scrollTo({ top: scrollRef.current.clientHeight * 0.85, behavior: "smooth" })}
+            style={{ padding: "14px 36px", background: "transparent", border: `1px solid ${g(0.22)}`, borderRadius: 2, color: C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", transition: "all 0.15s" }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = g(0.5); e.currentTarget.style.color = C.gold; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = g(0.22); e.currentTarget.style.color = C.textMid; }}>
+            See How It Works
+          </button>
+        </div>
+
+        {/* 3D scroll card */}
+        <div style={{ width: "100%", maxWidth: 860, perspective: "1400px", perspectiveOrigin: "50% -10%" }}>
+          <div style={{ width: "100%", transform: `rotateX(${tilt}deg) scale(${sc})`, transformOrigin: "top center", transition: "transform 0.04s linear", border: `1px solid ${g(0.18)}`, borderRadius: 6, overflow: "hidden", boxShadow: `0 ${30 + tilt * 3}px ${80 + tilt * 6}px rgba(0,0,0,0.75), 0 0 80px ${g(0.06)}` }}>
+            {/* Browser chrome */}
+            <div style={{ background: "#111215", padding: "10px 14px", borderBottom: `1px solid ${g(0.1)}`, display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ display: "flex", gap: 5 }}>{["#e05c5c","#d4a72c","#4aab7a"].map((c,i) => <div key={i} style={{ width: 9, height: 9, borderRadius: "50%", background: c, opacity: 0.7 }} />)}</div>
+              <div style={{ flex: 1, margin: "0 12px", padding: "4px 12px", background: g(0.05), border: `1px solid ${g(0.1)}`, fontFamily: MONO, fontSize: 9, color: C.textDim, letterSpacing: "0.04em", textAlign: "center" }}>vault.rutledge.app</div>
+            </div>
+            {/* Mock UI */}
+            <div style={{ background: C.bg, padding: "24px 32px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 24, paddingBottom: 16, borderBottom: `1px solid ${g(0.07)}` }}>
+                <div>
+                  <div style={{ fontFamily: MONO, fontSize: 7, color: C.textDim, letterSpacing: "0.12em", marginBottom: 6 }}>PORTFOLIO · APRIL 2026</div>
+                  <div style={{ fontFamily: SERIF, fontSize: 40, color: C.text, letterSpacing: "-0.03em", lineHeight: 1 }}>$124,800</div>
+                </div>
+                <div style={{ display: "flex", gap: 24 }}>
+                  {[["COST BASIS","$98,200",C.textMid],["UNREALIZED P&L","+$26,600",C.green]].map(([l,v,c]) => (
+                    <div key={l} style={{ textAlign: "right" }}>
+                      <div style={{ fontFamily: MONO, fontSize: 7, color: C.textDim, letterSpacing: "0.1em", marginBottom: 4 }}>{l}</div>
+                      <div style={{ fontFamily: SERIF, fontSize: 22, color: c }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {[
+                ["ROLEX","Daytona 116500LN","Excellent","$28,400","$28,400","+$6,400",true],
+                ["HERMÈS","Birkin 25 Togo Noir","New / Unworn","$38,200","$43,930","+$13,930",true],
+                ["CHANEL","Classic Flap Medium","Very Good","$9,800","$8,624","-$1,376",false],
+                ["AUDEMARS PIGUET","Royal Oak 15500ST","Excellent","$44,400","$44,400","+$8,400",true],
+              ].map(([brand,name,cond,mkt,val,pnl,pos],i) => (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 100px 100px 100px 90px", gap: 12, padding: "10px 0", borderBottom: `1px solid ${g(0.05)}`, alignItems: "center" }}>
+                  <div><div style={{ fontFamily: MONO, fontSize: 7, color: C.gold, letterSpacing: "0.1em", marginBottom: 2 }}>{brand}</div><div style={{ fontFamily: SERIF, fontSize: 12, color: C.text }}>{name}</div></div>
+                  <div style={{ fontFamily: MONO, fontSize: 8, color: C.textMid }}>{cond}</div>
+                  <div style={{ fontFamily: SERIF, fontSize: 12, color: C.textMid, textAlign: "right" }}>{mkt}</div>
+                  <div style={{ fontFamily: SERIF, fontSize: 12, color: C.text, textAlign: "right" }}>{val}</div>
+                  <div style={{ fontFamily: SERIF, fontSize: 12, color: pos ? C.green : C.red, textAlign: "right" }}>{pnl}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        {/* Scroll cue */}
+        <div style={{ marginTop: 40, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, opacity: 0.4, animation: "fadeUpDown 2.2s ease-in-out infinite" }}>
+          <div style={{ fontFamily: MONO, fontSize: 7, color: C.textDim, letterSpacing: "0.14em" }}>SCROLL</div>
+          <svg width="10" height="14" viewBox="0 0 10 14" fill="none"><path d="M5 0v11M1 7l4 5 4-5" stroke={C.textDim} strokeWidth="1" strokeLinecap="round"/></svg>
+        </div>
+      </section>
+
+      {/* Features */}
+      <section style={{ padding: "80px 40px", position: "relative", zIndex: 1 }}>
+        <div style={{ maxWidth: 960, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 56 }}>
+            <div style={{ fontFamily: MONO, fontSize: 9, color: C.gold, letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 14 }}>How It Works</div>
+            <div style={{ fontFamily: SERIF, fontSize: "clamp(26px, 4vw, 42px)", color: C.text, fontWeight: 300 }}>Market intelligence for serious collectors</div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", border: `1px solid ${g(0.12)}` }}>
+            {[
+              { stat: "8", label: "Live Platforms", desc: "Fashionphile, Rebag, Privé Porter, eBay & more scraped in real time" },
+              { stat: "Live", label: "Market Pricing", desc: "IQR-filtered across thousands of listings — no outliers, no noise" },
+              { stat: "Full", label: "Portfolio Analytics", desc: "Cost basis, P&L, trends, sparklines, tags, condition tracking" },
+            ].map((f, i, arr) => (
+              <div key={i} style={{ padding: "36px 30px", background: C.bg, borderRight: i < arr.length - 1 ? `1px solid ${g(0.1)}` : "none" }}>
+                <div style={{ fontFamily: SERIF, fontSize: 44, color: C.gold, letterSpacing: "-0.03em", lineHeight: 1, marginBottom: 10 }}>{f.stat}</div>
+                <div style={{ fontFamily: MONO, fontSize: 8, color: C.textMid, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>{f.label}</div>
+                <div style={{ fontFamily: MONO, fontSize: 10, color: C.textDim, lineHeight: 1.75 }}>{f.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Brand ticker */}
+      <section style={{ padding: "0 0 80px", overflow: "hidden", position: "relative", zIndex: 1 }}>
+        <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.16em", textTransform: "uppercase", textAlign: "center", marginBottom: 20 }}>Tracked across top brands</div>
+        <div style={{ display: "flex", animation: "ticker 35s linear infinite", width: "max-content" }}>
+          {[...BRANDS,...BRANDS].map((b,i) => (
+            <div key={i} style={{ padding: "8px 28px", fontFamily: SERIF, fontSize: 15, color: i % 5 === 0 ? C.gold : C.textDim, whiteSpace: "nowrap", borderRight: `1px solid ${g(0.08)}`, letterSpacing: "0.04em" }}>{b}</div>
+          ))}
+        </div>
+      </section>
+
+      {/* Final CTA */}
+      <section style={{ padding: "60px 40px 120px", textAlign: "center", position: "relative", zIndex: 1 }}>
+        <div style={{ maxWidth: 560, margin: "0 auto" }}>
+          <svg width="52" height="52" viewBox="0 0 20 20" fill="none" style={{ margin: "0 auto 28px", display: "block" }}>
+            <rect x="1" y="1" width="18" height="18" stroke={C.gold} strokeWidth="0.8" fill="none"/>
+            <rect x="4.5" y="4.5" width="11" height="11" fill={C.gold} opacity="0.12"/>
+            <text x="10" y="14" textAnchor="middle" fill={C.gold} fontSize="9" fontFamily="Georgia,serif">V</text>
+          </svg>
+          <div style={{ fontFamily: SERIF, fontSize: "clamp(26px, 4vw, 44px)", color: C.text, fontWeight: 300, lineHeight: 1.2, marginBottom: 18 }}>Your collection deserves<br /><span style={{ fontStyle: "italic" }}>better intelligence</span></div>
+          <div style={{ fontFamily: MONO, fontSize: 10, color: C.textMid, letterSpacing: "0.06em", lineHeight: 1.85, marginBottom: 40 }}>Free to use. No credit card. Your portfolio stays private.</div>
+          <button onClick={onEnter} style={{ padding: "16px 52px", background: C.gold, border: "none", borderRadius: 2, color: C.bg, cursor: "pointer", fontFamily: MONO, fontSize: 11, letterSpacing: "0.18em", textTransform: "uppercase", fontWeight: 500, transition: "opacity 0.15s" }} onMouseEnter={e => e.currentTarget.style.opacity = "0.85"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
+            Enter Vault
+          </button>
+          <div style={{ marginTop: 14, fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.08em" }}>8 platforms · Live data · Portfolio tracking</div>
+        </div>
+      </section>
+
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500&display=swap');
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        @keyframes ticker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+        @keyframes fadeUpDown { 0%,100% { opacity:0.4; transform:translateY(0); } 50% { opacity:0.8; transform:translateY(5px); } }
+      `}</style>
+    </div>
+  );
+}
+
 export default function LuxuryTracker() {
+  // Show landing for new visitors; skip if they already have portfolio data
+  const [showLanding, setShowLanding] = useState(() => {
+    const hasPortfolio = (() => { try { return JSON.parse(localStorage.getItem("vault_portfolio") || "[]").length > 0; } catch { return false; } })();
+    const hasVisited = localStorage.getItem("vault_visited") === "1";
+    return !hasPortfolio && !hasVisited;
+  });
+
+  function enterApp() {
+    localStorage.setItem("vault_visited", "1");
+    setShowLanding(false);
+  }
+
   const [view, setView] = useState("portfolio");
   const [owned, setOwned] = useState(() => loadPortfolio());
   const [searchResults, setSearchResults] = useState([]);
@@ -320,6 +497,20 @@ export default function LuxuryTracker() {
   const w = a => `rgba(255,255,255,${a})`;
   const MONO = "'Geist Mono','SF Mono','Consolas',monospace";
   const SERIF = "'Cormorant Garamond',Georgia,'Times New Roman',serif";
+
+  // ── Landing page ──
+  if (showLanding) {
+    return (
+      <>
+        <style>{`
+          @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&display=swap');
+          @import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500&display=swap');
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+        `}</style>
+        <LandingPage onEnter={enterApp} C={C} g={g} MONO={MONO} SERIF={SERIF} />
+      </>
+    );
+  }
 
   // ── Search card ──
   const renderCard = (item) => {
@@ -804,6 +995,10 @@ export default function LuxuryTracker() {
             <span style={{ fontFamily: SERIF, fontSize: 17, letterSpacing: "0.22em", color: C.text, textTransform: "uppercase" }}>Vault</span>
           </div>
           <div style={{ display: "flex", alignItems: "center" }}>
+            <button onClick={() => setShowLanding(true)} style={{ padding: "0 14px", height: 56, background: "none", border: "none", color: C.textDim, cursor: "pointer", fontFamily: MONO, fontSize: 9, letterSpacing: "0.1em", display: "flex", alignItems: "center", gap: 4, transition: "color 0.15s" }} onMouseEnter={e => e.currentTarget.style.color = C.gold} onMouseLeave={e => e.currentTarget.style.color = C.textDim}>
+              ‹ HOME
+            </button>
+            <div style={{ width: 1, height: 20, background: C.border, margin: "0 4px" }} />
             {[{ key: "portfolio", label: owned.length > 0 ? `Portfolio (${owned.length})` : "Portfolio" }, { key: "search", label: "Search" }].map(v => (
               <button key={v.key} onClick={() => { setView(v.key); setSelectedItem(null); }}
                 style={{ padding: "0 18px", height: 56, background: "none", border: "none", borderBottom: view === v.key ? `1px solid ${C.gold}` : "1px solid transparent", color: view === v.key ? C.gold : C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", transition: "all 0.2s", marginBottom: -1 }}>
