@@ -319,7 +319,7 @@ export default function LuxuryTracker() {
           <div>
             <div style={{ marginBottom: 24 }}>
               <h2 style={{ fontSize: 26, fontWeight: 400, letterSpacing: "-0.02em", marginBottom: 6 }}>Search Luxury Goods</h2>
-              <p style={{ fontSize: 13, color: "#6a6560", fontFamily: sans, marginBottom: 18 }}>Live resale data from eBay sold listings & Fashionphile</p>
+              <p style={{ fontSize: 13, color: "#6a6560", fontFamily: sans, marginBottom: 18 }}>Live resale data from eBay, Fashionphile, Rebag, Privé Porter & more</p>
 
               <div style={{ display: "flex", gap: 8 }}>
                 <div style={{ position: "relative", flex: 1 }}>

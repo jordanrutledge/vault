@@ -168,6 +168,44 @@ async function scrapeLuxeDH(query, limit) {
   return results;
 }
 
+// ── Generic Shopify Suggest Scraper factory ──
+function makeShopifyScraper(domain, platformName) {
+  return async function(query, limit) {
+    const results = [];
+    try {
+      const c = new AbortController();
+      const t = setTimeout(() => c.abort(), 8000);
+      const r = await fetch(
+        `https://${domain}/search/suggest.json?q=${encodeURIComponent(query)}&resources[type]=product&resources[limit]=${limit}`,
+        { headers: { "User-Agent": UA, Accept: "application/json" }, signal: c.signal }
+      );
+      clearTimeout(t);
+      if (!r.ok) return results;
+      const data = await r.json();
+      const products = data?.resources?.results?.products || [];
+      for (const p of products) {
+        const price = parseFloat(p.price) || parseFloat(p.compare_at_price_min) || 0;
+        if (price <= 0) continue;
+        const title = p.title || "";
+        const brand = extractBrand(title) || extractBrand(query);
+        results.push({
+          name: title, brand: brand || query.split(" ")[0], price,
+          condition: "Pre-owned", platform: platformName,
+          url: p.url ? `https://${domain}${p.url}` : "",
+          imageUrl: p.image || p.featured_image?.url || "",
+        });
+      }
+    } catch (e) { console.error(`[${platformName}]`, e.message); }
+    return results;
+  };
+}
+
+const scrapeRebag = makeShopifyScraper("shop.rebag.com", "Rebag");
+const scrapeMadisonAve = makeShopifyScraper("www.madisonavenuecouture.com", "Madison Avenue Couture");
+const scrapePrivePorter = makeShopifyScraper("www.priveporter.com", "Privé Porter");
+const scrapeAnns = makeShopifyScraper("www.annsfabulousfinds.com", "Ann's Fabulous Finds");
+const scrapeBeladora = makeShopifyScraper("www.beladora.com", "Beladora");
+
 // ── Aggregation ──
 function aggregate(listings, query) {
   if (!listings.length) return [];
@@ -263,13 +301,19 @@ module.exports = async function handler(req, res) {
   if (cached) return res.status(200).json({ ...cached, cached: true });
 
   // Run all scrapers in parallel
-  const [ebayResults, fpResults, luxeResults] = await Promise.all([
+  const limit10 = Math.min(limit, 10);
+  const [ebayResults, fpResults, luxeResults, rebagResults, macResults, ppResults, annsResults, beladoraResults] = await Promise.all([
     scrapeEbay(q, limit).catch(() => []),
     scrapeFashionphile(q, limit).catch(() => []),
-    scrapeLuxeDH(q, Math.min(limit, 10)).catch(() => []),
+    scrapeLuxeDH(q, limit10).catch(() => []),
+    scrapeRebag(q, limit10).catch(() => []),
+    scrapeMadisonAve(q, limit10).catch(() => []),
+    scrapePrivePorter(q, limit10).catch(() => []),
+    scrapeAnns(q, limit10).catch(() => []),
+    scrapeBeladora(q, limit10).catch(() => []),
   ]);
 
-  const all = [...ebayResults, ...fpResults, ...luxeResults];
+  const all = [...ebayResults, ...fpResults, ...luxeResults, ...rebagResults, ...macResults, ...ppResults, ...annsResults, ...beladoraResults];
   const items = aggregate(all, q);
 
   const response = {
@@ -279,6 +323,11 @@ module.exports = async function handler(req, res) {
     platforms: {
       ebay: { name: "eBay (Sold)", count: ebayResults.length },
       fashionphile: { name: "Fashionphile", count: fpResults.length },
+      rebag: { name: "Rebag", count: rebagResults.length },
+      madisonave: { name: "Madison Avenue Couture", count: macResults.length },
+      priveporter: { name: "Privé Porter", count: ppResults.length },
+      anns: { name: "Ann's Fabulous Finds", count: annsResults.length },
+      beladora: { name: "Beladora", count: beladoraResults.length },
       luxedh: { name: "LuxeDH", count: luxeResults.length },
     },
     timestamp: new Date().toISOString(),
