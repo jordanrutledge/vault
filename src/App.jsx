@@ -106,8 +106,9 @@ export default function LuxuryTracker() {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
-  const [addModal, setAddModal] = useState(null); // item being added
-  const [editModal, setEditModal] = useState(null); // owned entry being edited
+  const [addModal, setAddModal] = useState(null);
+  const [editModal, setEditModal] = useState(null);
+  const [detailModal, setDetailModal] = useState(null); // item detail popup
   const [allItems, setAllItems] = useState(() => loadItemCache());
   const [platformInfo, setPlatformInfo] = useState(null);
   const [hoveredCard, setHoveredCard] = useState(null);
@@ -302,7 +303,7 @@ export default function LuxuryTracker() {
         {io && <div style={{ position: "absolute", top: 0, right: 0, width: 36, height: 36, background: `linear-gradient(225deg,${g(0.35)},transparent)`, borderRadius: "0 3px 0 0" }} />}
 
         <div style={{ display: "flex", gap: 12, marginBottom: 16, justifyContent: "space-between" }}>
-          <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ minWidth: 0, flex: 1, cursor: "pointer" }} onClick={() => setDetailModal(item)}>
             <div style={{ fontFamily: MONO, fontSize: 9, color: C.gold, letterSpacing: "0.16em", textTransform: "uppercase", marginBottom: 5 }}>
               {item.brand} <span style={{ color: C.textDim }}>· {item.category}</span>
             </div>
@@ -313,7 +314,9 @@ export default function LuxuryTracker() {
               </div>
             )}
           </div>
-          {item.imageUrl ? <img src={item.imageUrl} alt="" style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 2, flexShrink: 0 }} onError={e => e.target.style.display = "none"} /> : <div style={{ width: 56, height: 56, border: `1px solid ${C.border}`, borderRadius: 2, display: "flex", alignItems: "center", justifyContent: "center", color: C.textDim, fontSize: 20, flexShrink: 0 }}>○</div>}
+          <div onClick={() => setDetailModal(item)} style={{ cursor: "pointer", flexShrink: 0 }}>
+            {item.imageUrl ? <img src={item.imageUrl} alt="" style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 2, display: "block", transition: "opacity 0.15s" }} onError={e => e.target.style.display = "none"} /> : <div style={{ width: 56, height: 56, border: `1px solid ${C.border}`, borderRadius: 2, display: "flex", alignItems: "center", justifyContent: "center", color: C.textDim, fontSize: 20 }}>○</div>}
+          </div>
         </div>
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 12 }}>
@@ -495,6 +498,130 @@ export default function LuxuryTracker() {
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ── Item Detail Modal ──
+  const renderDetailModal = () => {
+    const item = detailModal;
+    if (!item) return null;
+    const io = isOwned(item.id);
+    const oe = getOwned(item.id);
+    const ph = item.key ? (priceHistory[item.key] || getPriceHistory(item.key)) : [];
+    const trend = getTrend(ph);
+    const tc = trend === null ? C.textDim : trend >= 0 ? C.green : C.red;
+    const spread = item.highPrice - item.lowPrice;
+    const spreadPct = item.avgPrice > 0 ? Math.round((spread / item.avgPrice) * 100) : 0;
+
+    return (
+      <div onClick={() => setDetailModal(null)}
+        style={{ position: "fixed", inset: 0, zIndex: 250, background: "rgba(0,0,0,0.88)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <div onClick={e => e.stopPropagation()}
+          style={{ background: C.surface, border: `1px solid ${C.border}`, maxWidth: 760, width: "100%", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 80px 160px rgba(0,0,0,0.8)", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+
+          {/* Left: Large image */}
+          <div style={{ position: "relative", minHeight: 400, background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", borderRight: `1px solid ${C.border}` }}>
+            {item.imageUrl ? (
+              <img src={item.imageUrl} alt={item.name}
+                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", minHeight: 400 }}
+                onError={e => { e.target.style.display = "none"; }} />
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12 }}>
+                <div style={{ fontFamily: SERIF, fontSize: 60, color: C.textDim, opacity: 0.3 }}>
+                  {item.category === "Watches" ? "◷" : item.category === "Handbags" ? "◻" : item.category === "Jewelry" ? "◇" : "○"}
+                </div>
+                <div style={{ fontFamily: MONO, fontSize: 9, color: C.textDim, letterSpacing: "0.1em" }}>NO IMAGE</div>
+              </div>
+            )}
+            <div style={{ position: "absolute", top: 14, left: 14, padding: "4px 10px", background: "rgba(8,9,10,0.8)", border: `1px solid ${C.border}`, fontFamily: MONO, fontSize: 8, color: C.textMid, letterSpacing: "0.1em", textTransform: "uppercase", backdropFilter: "blur(8px)" }}>
+              {item.category}
+            </div>
+            <button onClick={() => setDetailModal(null)}
+              style={{ position: "absolute", top: 14, right: 14, width: 28, height: 28, background: "rgba(8,9,10,0.8)", border: `1px solid ${C.border}`, borderRadius: "50%", color: C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)" }}>
+              ×
+            </button>
+          </div>
+
+          {/* Right: Details */}
+          <div style={{ padding: "32px 28px", display: "flex", flexDirection: "column", overflowY: "auto" }}>
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontFamily: MONO, fontSize: 9, color: C.gold, letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 8 }}>{item.brand}</div>
+              <div style={{ fontFamily: SERIF, fontSize: 22, color: C.text, lineHeight: 1.25 }}>{item.name}</div>
+            </div>
+
+            <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: `1px solid ${C.border}` }}>
+              <div style={{ fontFamily: SERIF, fontSize: 44, color: C.text, letterSpacing: "-0.03em", lineHeight: 1, marginBottom: 10 }}>{fmt(item.avgPrice)}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 8 }}>
+                {[{ l: "Low", v: fmt(item.lowPrice), c: C.red }, { l: "Average", v: fmt(item.avgPrice), c: C.textMid }, { l: "High", v: fmt(item.highPrice), c: C.green }].map(s => (
+                  <div key={s.l}>
+                    <div style={{ fontFamily: MONO, fontSize: 7, color: C.textDim, letterSpacing: "0.1em", marginBottom: 3, textTransform: "uppercase" }}>{s.l}</div>
+                    <div style={{ fontFamily: SERIF, fontSize: 14, color: s.c }}>{s.v}</div>
+                  </div>
+                ))}
+              </div>
+              {spreadPct > 0 && <div style={{ fontFamily: MONO, fontSize: 9, color: C.textDim }}>Market spread: ±{spreadPct}% · {item.numListings} listing{item.numListings !== 1 ? "s" : ""}</div>}
+            </div>
+
+            {ph.length >= 2 && (
+              <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: `1px solid ${C.border}` }}>
+                <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>Price History</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                  <Sparkline data={ph} width={140} height={40} color={tc} />
+                  <div>
+                    <div style={{ fontFamily: MONO, fontSize: 11, color: tc }}>{trend >= 0 ? "▲" : "▼"} {Math.abs(trend).toFixed(1)}%</div>
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, marginTop: 2 }}>{ph[0].date} → {ph[ph.length-1].date}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: `1px solid ${C.border}` }}>
+              <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>Available On</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {(item.sampleUrls?.length > 0 ? item.sampleUrls : item.sources.map(s => ({ platform: s, url: null }))).map((u, i) => (
+                  u.url ? (
+                    <a key={i} href={u.url} target="_blank" rel="noopener noreferrer"
+                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 2, textDecoration: "none", transition: "border-color 0.15s" }}
+                      onMouseEnter={e => e.currentTarget.style.borderColor = g(0.3)}
+                      onMouseLeave={e => e.currentTarget.style.borderColor = C.border}>
+                      <span style={{ fontFamily: MONO, fontSize: 10, color: C.textMid }}>{u.platform}</span>
+                      <span style={{ fontFamily: MONO, fontSize: 10, color: C.gold }}>View ↗</span>
+                    </a>
+                  ) : (
+                    <div key={i} style={{ padding: "8px 12px", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 2 }}>
+                      <span style={{ fontFamily: MONO, fontSize: 10, color: C.textMid }}>{u.platform}</span>
+                    </div>
+                  )
+                ))}
+              </div>
+            </div>
+
+            {io && oe ? (
+              <div>
+                <div style={{ padding: "14px 16px", background: g(0.06), border: `1px solid ${C.borderGold}`, borderRadius: 2, marginBottom: 10 }}>
+                  <div style={{ fontFamily: MONO, fontSize: 8, color: C.gold, letterSpacing: "0.1em", marginBottom: 8, textTransform: "uppercase" }}>In Your Vault</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <div><div style={{ fontFamily: MONO, fontSize: 7, color: C.textDim, marginBottom: 2 }}>CONDITION</div><div style={{ fontFamily: SERIF, fontSize: 13, color: C.text }}>{oe.condition}</div></div>
+                    {oe.purchasePrice && <div><div style={{ fontFamily: MONO, fontSize: 7, color: C.textDim, marginBottom: 2 }}>PAID</div><div style={{ fontFamily: SERIF, fontSize: 13, color: C.text }}>{fmt(oe.purchasePrice)}</div></div>}
+                    {oe.purchaseDate && <div><div style={{ fontFamily: MONO, fontSize: 7, color: C.textDim, marginBottom: 2 }}>PURCHASED</div><div style={{ fontFamily: MONO, fontSize: 10, color: C.textMid }}>{fmtDate(oe.purchaseDate)}</div></div>}
+                    {oe.purchasePrice && <div><div style={{ fontFamily: MONO, fontSize: 7, color: C.textDim, marginBottom: 2 }}>P&L</div><div style={{ fontFamily: SERIF, fontSize: 13, color: item.avgPrice >= oe.purchasePrice ? C.green : C.red }}>{item.avgPrice >= oe.purchasePrice ? "+" : ""}{fmt(item.avgPrice - oe.purchasePrice)}</div></div>}
+                  </div>
+                  {oe.tags?.length > 0 && <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 10 }}>{oe.tags.map(t => <span key={t} style={{ fontFamily: MONO, fontSize: 7, color: C.gold, padding: "2px 6px", border: `1px solid ${g(0.25)}`, borderRadius: 2 }}>{t}</span>)}</div>}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => { setDetailModal(null); openEditModal(oe, item); }} style={{ flex: 1, padding: "10px", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 2, color: C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 9, letterSpacing: "0.08em" }}>EDIT ENTRY</button>
+                  <button onClick={() => { removeOwned(item.id); setDetailModal(null); }} style={{ padding: "10px 14px", background: "transparent", border: "1px solid rgba(224,92,92,0.2)", borderRadius: 2, color: C.red, cursor: "pointer", fontFamily: MONO, fontSize: 9 }}>REMOVE</button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => { setDetailModal(null); openAddModal(item); }}
+                style={{ width: "100%", padding: "13px", background: C.gold, border: "none", borderRadius: 2, color: C.bg, cursor: "pointer", fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", fontWeight: 500 }}>
+                Add to Vault
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -772,6 +899,9 @@ export default function LuxuryTracker() {
           </div>
         )}
       </main>
+
+      {/* Detail modal */}
+      {detailModal && renderDetailModal()}
 
       {/* Add modal */}
       {addModal && renderForm(addModal, false)}
