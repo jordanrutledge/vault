@@ -187,7 +187,8 @@ export default function LuxuryTracker() {
     return { totalValue, costBasis, totalPnL: costBasis > 0 ? totalValue - costBasis : null, gainers, losers };
   }, [owned, allItems]);
 
-  // ── Keyboard shortcuts ──
+  // ── Keyboard shortcuts (filteredResults ref kept in sync via ref to avoid stale closure) ──
+  const filteredResultsRef = useRef([]);
   useEffect(() => {
     function onKey(e) {
       if (e.key === "Escape") {
@@ -197,16 +198,16 @@ export default function LuxuryTracker() {
         if (editModal) { setEditModal(null); return; }
         if (authView) { setAuthView(null); return; }
       }
-      // Arrow navigation between items in detail modal
-      if (detailModal && filteredResults.length > 1) {
-        const idx = filteredResults.findIndex(i => i.id === detailModal.id);
-        if (e.key === "ArrowRight" && idx < filteredResults.length - 1) setDetailModal(filteredResults[idx + 1]);
-        if (e.key === "ArrowLeft" && idx > 0) setDetailModal(filteredResults[idx - 1]);
+      if (detailModal && filteredResultsRef.current.length > 1) {
+        const fr = filteredResultsRef.current;
+        const idx = fr.findIndex(i => i.id === detailModal.id);
+        if (e.key === "ArrowRight" && idx < fr.length - 1) setDetailModal(fr[idx + 1]);
+        if (e.key === "ArrowLeft" && idx > 0) setDetailModal(fr[idx - 1]);
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [lightbox, detailModal, addModal, editModal, authView, filteredResults]);
+  }, [lightbox, detailModal, addModal, editModal, authView]);
 
   const handleSearch = useCallback(async () => {
     if (!search.trim()) return;
@@ -296,13 +297,16 @@ export default function LuxuryTracker() {
 
   const allPlatforms = useMemo(() => { const s = new Set(); searchResults.forEach(r => r.sources?.forEach(p => s.add(p))); return [...s]; }, [searchResults]);
 
-  const filteredResults = useMemo(() => searchResults
-    .filter(i => filterCat === "All" || i.category === filterCat)
-    .filter(i => filterPlatform === "All" || i.sources?.includes(filterPlatform))
-    .filter(i => !filterMinPrice || i.avgPrice >= parseFloat(filterMinPrice))
-    .filter(i => !filterMaxPrice || i.avgPrice <= parseFloat(filterMaxPrice))
-    .sort((a, b) => sortBy === "price-high" ? b.avgPrice - a.avgPrice : sortBy === "price-low" ? a.avgPrice - b.avgPrice : sortBy === "listings" ? b.numListings - a.numListings : 0),
-    [searchResults, filterCat, filterPlatform, filterMinPrice, filterMaxPrice, sortBy]);
+  const filteredResults = useMemo(() => {
+    const results = searchResults
+      .filter(i => filterCat === "All" || i.category === filterCat)
+      .filter(i => filterPlatform === "All" || i.sources?.includes(filterPlatform))
+      .filter(i => !filterMinPrice || i.avgPrice >= parseFloat(filterMinPrice))
+      .filter(i => !filterMaxPrice || i.avgPrice <= parseFloat(filterMaxPrice))
+      .sort((a, b) => sortBy === "price-high" ? b.avgPrice - a.avgPrice : sortBy === "price-low" ? a.avgPrice - b.avgPrice : sortBy === "listings" ? b.numListings - a.numListings : 0);
+    filteredResultsRef.current = results;
+    return results;
+  }, [searchResults, filterCat, filterPlatform, filterMinPrice, filterMaxPrice, sortBy]);
 
   const activeFilterCount = [filterCat !== "All", filterPlatform !== "All", !!filterMinPrice, !!filterMaxPrice, sortBy !== "relevance"].filter(Boolean).length;
 
