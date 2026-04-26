@@ -1522,7 +1522,7 @@ export default function LuxuryTracker() {
                 <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(300px, 1fr))", gap: 1, background: C.border }}>
                   {/* Discovering state — AI is hunting for the item */}
                   {searching && searchResults.some(r => r._discovering) && (
-                    <div style={{ gridColumn: "1 / -1", padding: "60px 40px", textAlign: "center", border: , background: g(0.03) }}>
+                    <div style={{ gridColumn: "1 / -1", padding: "60px 40px", textAlign: "center", border: "1px solid rgba(196,160,82,0.15)", background: "rgba(196,160,82,0.03)" }}>
                       <div style={{ fontFamily: MONO, fontSize: 9, color: C.gold, letterSpacing: "0.2em", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
                         <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.gold, animation: "pulse 1s ease-in-out infinite" }} />
                         SEARCHING THE OPEN WEB
@@ -1538,18 +1538,18 @@ export default function LuxuryTracker() {
                   {/* Enriched item — discovered via AI web search */}
                   {!searching && filteredResults.filter(r => r.enriched).map(item => (
                     <div key={item.id} style={{ gridColumn: isMobile ? "1" : "1 / -1" }}>
-                      <div style={{ padding: "4px 12px", background: g(0.15), border: , borderBottom: "none", display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 0, borderRadius: "2px 2px 0 0" }}>
+                      <div style={{ padding: "4px 12px", background: "rgba(196,160,82,0.15)", border: "1px solid rgba(196,160,82,0.3)", borderBottom: "none", display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 0, borderRadius: "2px 2px 0 0" }}>
                         <div style={{ width: 5, height: 5, borderRadius: "50%", background: C.gold }} />
                         <span style={{ fontFamily: MONO, fontSize: 8, color: C.gold, letterSpacing: "0.14em" }}>DISCOVERED · ADDED TO CATALOG</span>
                       </div>
                       {renderCard(item)}
                       {item.noMarketData && (
-                        <div style={{ padding: "12px 16px", background: g(0.04), border: , borderTop: "none", fontFamily: MONO, fontSize: 9, color: C.textDim, lineHeight: 1.7 }}>
+                        <div style={{ padding: "12px 16px", background: "rgba(196,160,82,0.04)", border: "1px solid rgba(196,160,82,0.12)", borderTop: "none", fontFamily: MONO, fontSize: 9, color: C.textDim, lineHeight: 1.7 }}>
                           No resale listings found yet. This item may be too new or too rare for secondary market data. MSRP shown where known.
                         </div>
                       )}
                       {item.description && (
-                        <div style={{ padding: "12px 16px", background: g(0.02), border: , borderTop: "none", fontFamily: MONO, fontSize: 9, color: C.textDim, lineHeight: 1.7 }}>
+                        <div style={{ padding: "12px 16px", background: "rgba(196,160,82,0.02)", border: "1px solid rgba(196,160,82,0.08)", borderTop: "none", fontFamily: MONO, fontSize: 9, color: C.textDim, lineHeight: 1.7 }}>
                           {item.description}
                         </div>
                       )}
