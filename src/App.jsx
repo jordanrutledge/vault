@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const API_URL = "";
@@ -286,6 +286,449 @@ function LandingPage({ onEnter, C, g, MONO, SERIF }) {
   );
 }
 
+
+// ── CatalogBrowse Component ──────────────────────────────────────────────
+function CatalogBrowse({
+  C, g, w, MONO, SERIF, isMobile, fmt, API_URL,
+  catItems, setCatItems, catLoading, setCatLoading,
+  catTotal, setCatTotal, catPage, setCatPage,
+  catTotalPages, setCatTotalPages, catCategory, setCatCategory,
+  catBrand, setCatBrand, catSubcat, setCatSubcat,
+  catSort, setCatSort, catQ, setCatQ, catQInput, setCatQInput,
+  catFacets, setCatFacets, liveItems, setLiveItems,
+  liveFetching, setLiveFetching, catDebounceRef,
+  isOwned, getOwned, openAddModal,
+  searchResults, setSearchResults, search, setSearch,
+  searching, handleSearch, searchError, allItems, setAllItems,
+  filteredResults, filterCat, setFilterCat, filterPlatform, setFilterPlatform,
+  filterMinPrice, setFilterMinPrice, filterMaxPrice, setFilterMaxPrice,
+  sortBy, setSortBy, platformInfo, setDetailModal, inputRef,
+}) {
+  const BROWSE_CATS = ["All", "Watches", "Handbags", "Jewelry", "Shoes", "Small Leather Goods"];
+  const SORT_OPTIONS = [
+    { value: "popular", label: "Most Popular" },
+    { value: "name", label: "Name A–Z" },
+    { value: "price-high", label: "Price: High to Low" },
+    { value: "price-low", label: "Price: Low to High" },
+  ];
+  const [mobileFiltersOpen, setMobileFiltersOpen] = React.useState(false);
+  const [brandSearch, setBrandSearch] = React.useState("");
+
+  // ── Fetch catalog items ──
+  async function fetchCatalog(opts = {}) {
+    const {
+      page = catPage, category = catCategory, brand = catBrand,
+      subcat = catSubcat, sort = catSort, q = catQ,
+    } = opts;
+    setCatLoading(true);
+    try {
+      const params = new URLSearchParams({ page, limit: 48, sort });
+      if (category && category !== "All") params.set("category", category);
+      if (brand) params.set("brand", brand);
+      if (subcat) params.set("subcategory", subcat);
+      if (q) params.set("q", q);
+      const resp = await fetch(`${API_URL}/api/catalog?${params}`);
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error);
+      setCatItems(data.items || []);
+      setCatTotal(data.total || 0);
+      setCatPage(data.page || 1);
+      setCatTotalPages(data.totalPages || 1);
+      setCatFacets(data.facets || {});
+    } catch (e) {
+      console.error("[catalog fetch]", e.message);
+    } finally {
+      setCatLoading(false);
+    }
+  }
+
+  // Load on mount
+  React.useEffect(() => { fetchCatalog(); }, []);
+
+  function applyFilter(key, val) {
+    const opts = { page: 1, category: catCategory, brand: catBrand, subcat: catSubcat, sort: catSort, q: catQ };
+    opts[key] = val;
+    if (key === "category") { setCatCategory(val); setCatBrand(""); setCatSubcat(""); opts.brand = ""; opts.subcat = ""; }
+    if (key === "brand") { setCatBrand(val); setCatSubcat(""); opts.subcat = ""; }
+    if (key === "subcat") setCatSubcat(val);
+    if (key === "sort") setCatSort(val);
+    if (key === "q") setCatQ(val);
+    setCatPage(1);
+    fetchCatalog(opts);
+  }
+
+  function handleQChange(val) {
+    setCatQInput(val);
+    if (catDebounceRef.current) clearTimeout(catDebounceRef.current);
+    catDebounceRef.current = setTimeout(() => applyFilter("q", val), 400);
+  }
+
+  function goPage(p) {
+    setCatPage(p);
+    fetchCatalog({ page: p });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // ── Get live prices for a catalog item ──
+  async function getLivePrices(item) {
+    const query = [item.brand, item.line, item.model_number, item.display_name]
+      .filter(Boolean).slice(0, 3).join(" ").replace(/\s+/g, " ").trim();
+    setLiveFetching(prev => ({ ...prev, [item.id]: true }));
+    try {
+      const resp = await fetch(`${API_URL}/api/search`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, limit: 20 }),
+      });
+      const data = await resp.json();
+      if (data.items?.length) {
+        const best = data.items[0];
+        setLiveItems(prev => ({ ...prev, [item.id]: { avgPrice: best.avgPrice, lowPrice: best.lowPrice, highPrice: best.highPrice, numListings: best.numListings, sources: best.sources, imageUrl: best.imageUrl, sampleUrls: best.sampleUrls } }));
+        // Add to allItems so Add to Vault works
+        const mapped = {
+          id: item.id,
+          key: item.id,
+          brand: item.brand,
+          name: item.display_name,
+          category: item.category,
+          avgPrice: best.avgPrice,
+          lowPrice: best.lowPrice,
+          highPrice: best.highPrice,
+          numListings: best.numListings,
+          sources: best.sources,
+          imageUrl: best.imageUrl || item.image_url,
+          sampleUrls: best.sampleUrls,
+        };
+        setAllItems(prev => { const ex = prev.find(i => i.id === item.id); return ex ? prev.map(i => i.id === item.id ? mapped : i) : [...prev, mapped]; });
+      } else {
+        setLiveItems(prev => ({ ...prev, [item.id]: { noResults: true } }));
+      }
+    } catch (e) {
+      setLiveItems(prev => ({ ...prev, [item.id]: { error: true } }));
+    } finally {
+      setLiveFetching(prev => ({ ...prev, [item.id]: false }));
+    }
+  }
+
+  const io = (id) => isOwned(id);
+  const oe = (id) => getOwned(id);
+
+  // ── Sidebar ──
+  const sidebar = (
+    <div style={{ width: isMobile ? "100%" : 220, flexShrink: 0, display: "flex", flexDirection: "column", gap: 0 }}>
+
+      {/* Category tabs */}
+      <div style={{ marginBottom: 2 }}>
+        <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.14em", textTransform: "uppercase", padding: "0 0 8px", borderBottom: `1px solid ${C.border}`, marginBottom: 6 }}>Category</div>
+        {BROWSE_CATS.map(cat => (
+          <button key={cat} onClick={() => applyFilter("category", cat)}
+            style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 10px", background: catCategory === cat ? g(0.1) : "transparent", border: "none", borderLeft: `2px solid ${catCategory === cat ? C.gold : "transparent"}`, color: catCategory === cat ? C.gold : C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", transition: "all 0.1s", marginBottom: 1 }}>
+            {cat}
+          </button>
+        ))}
+      </div>
+
+      {/* Subcategory */}
+      {(catFacets.suggestedSubcats?.length > 0 || catFacets.subcategories?.length > 0) && (
+        <div style={{ marginTop: 20, marginBottom: 2 }}>
+          <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.14em", textTransform: "uppercase", padding: "0 0 8px", borderBottom: `1px solid ${C.border}`, marginBottom: 10 }}>Style</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+            {(catFacets.suggestedSubcats?.length ? catFacets.suggestedSubcats : catFacets.subcategories?.map(s => s.name) || []).map(sub => (
+              <button key={sub} onClick={() => applyFilter("subcat", catSubcat === sub ? "" : sub)}
+                style={{ padding: "4px 9px", background: catSubcat === sub ? g(0.15) : "transparent", border: `1px solid ${catSubcat === sub ? C.gold : C.border}`, borderRadius: 2, color: catSubcat === sub ? C.gold : C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 9, letterSpacing: "0.04em", transition: "all 0.1s" }}>
+                {sub}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Brand */}
+      {catCategory !== "All" && (
+        <div style={{ marginTop: 20 }}>
+          <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.14em", textTransform: "uppercase", padding: "0 0 8px", borderBottom: `1px solid ${C.border}`, marginBottom: 8 }}>Brand</div>
+          <input type="text" placeholder="Filter brands..." value={brandSearch} onChange={e => setBrandSearch(e.target.value)}
+            style={{ width: "100%", padding: "7px 10px", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 2, color: C.text, fontFamily: MONO, fontSize: 10, outline: "none", marginBottom: 8, boxSizing: "border-box" }} />
+          <div style={{ maxHeight: 220, overflowY: "auto" }}>
+            {(catFacets.suggestedBrands?.length ? catFacets.suggestedBrands : (catFacets.brands?.map(b => b.name) || []))
+              .filter(b => !brandSearch || b.toLowerCase().includes(brandSearch.toLowerCase()))
+              .map(brand => {
+                const facet = catFacets.brands?.find(b => b.name === brand);
+                return (
+                  <button key={brand} onClick={() => applyFilter("brand", catBrand === brand ? "" : brand)}
+                    style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", textAlign: "left", padding: "6px 10px", background: catBrand === brand ? g(0.1) : "transparent", border: "none", borderLeft: `2px solid ${catBrand === brand ? C.gold : "transparent"}`, color: catBrand === brand ? C.gold : C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 10, transition: "all 0.1s", marginBottom: 1 }}>
+                    <span>{brand}</span>
+                    {facet && <span style={{ fontSize: 8, color: C.textDim }}>{facet.count.toLocaleString()}</span>}
+                  </button>
+                );
+              })}
+          </div>
+        </div>
+      )}
+
+      {/* Sort */}
+      <div style={{ marginTop: 20 }}>
+        <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.14em", textTransform: "uppercase", padding: "0 0 8px", borderBottom: `1px solid ${C.border}`, marginBottom: 8 }}>Sort</div>
+        {SORT_OPTIONS.map(opt => (
+          <button key={opt.value} onClick={() => applyFilter("sort", opt.value)}
+            style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 10px", background: catSort === opt.value ? g(0.1) : "transparent", border: "none", borderLeft: `2px solid ${catSort === opt.value ? C.gold : "transparent"}`, color: catSort === opt.value ? C.gold : C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 10, transition: "all 0.1s", marginBottom: 1 }}>
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Active filters reset */}
+      {(catBrand || catSubcat || catQ || catCategory !== "All") && (
+        <button onClick={() => { setCatCategory("All"); setCatBrand(""); setCatSubcat(""); setCatQ(""); setCatQInput(""); fetchCatalog({ category: "All", brand: "", subcat: "", q: "", page: 1 }); }}
+          style={{ marginTop: 24, padding: "8px", width: "100%", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 2, color: C.textDim, cursor: "pointer", fontFamily: MONO, fontSize: 9, letterSpacing: "0.1em" }}>
+          CLEAR ALL FILTERS
+        </button>
+      )}
+    </div>
+  );
+
+  // ── Catalog item card ──
+  const renderCatCard = (item) => {
+    const live = liveItems[item.id];
+    const owned = io(item.id);
+    const entry = oe(item.id);
+    const fetching = liveFetching[item.id];
+    const hasLive = live && !live.noResults && !live.error;
+
+    // The "add-able" item (needs live prices or use catalog MSRP)
+    const addableItem = hasLive
+      ? { id: item.id, key: item.id, brand: item.brand, name: item.display_name, category: item.category, avgPrice: live.avgPrice, lowPrice: live.lowPrice, highPrice: live.highPrice, numListings: live.numListings, sources: live.sources || [], imageUrl: live.imageUrl || item.image_url, sampleUrls: live.sampleUrls || [] }
+      : { id: item.id, key: item.id, brand: item.brand, name: item.display_name, category: item.category, avgPrice: item.msrp || 0, lowPrice: item.msrp || 0, highPrice: item.msrp || 0, numListings: 0, sources: [], imageUrl: item.image_url };
+
+    return (
+      <div key={item.id}
+        style={{ background: owned ? `linear-gradient(135deg, ${g(0.07)}, ${g(0.03)})` : C.surface, border: `1px solid ${owned ? C.borderGold : C.border}`, borderRadius: 3, overflow: "hidden", display: "flex", flexDirection: "column", transition: "border-color 0.2s" }}
+        onMouseEnter={e => { if (!owned) e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; }}
+        onMouseLeave={e => { if (!owned) e.currentTarget.style.borderColor = C.border; }}>
+
+        {/* Image */}
+        <div style={{ position: "relative", background: "#0a0b0c", height: 160, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}
+          onClick={() => hasLive && setDetailModal(addableItem)} style2={{ cursor: hasLive ? "pointer" : "default" }}>
+          {(item.image_url || (hasLive && live.imageUrl)) ? (
+            <img src={hasLive && live.imageUrl ? live.imageUrl : item.image_url} alt={item.display_name}
+              style={{ width: "100%", height: 160, objectFit: "contain", padding: "12px", boxSizing: "border-box" }}
+              onError={e => { e.target.style.display = "none"; }} />
+          ) : (
+            <div style={{ fontFamily: SERIF, fontSize: 36, color: C.textDim, opacity: 0.12 }}>
+              {item.category === "Watches" ? "◷" : item.category === "Handbags" ? "◻" : item.category === "Jewelry" ? "◇" : "○"}
+            </div>
+          )}
+          {owned && (
+            <div style={{ position: "absolute", top: 8, right: 8, padding: "3px 7px", background: g(0.25), border: `1px solid ${g(0.4)}`, fontFamily: MONO, fontSize: 7, color: C.gold, letterSpacing: "0.1em" }}>
+              IN VAULT
+            </div>
+          )}
+        </div>
+
+        {/* Info */}
+        <div style={{ padding: "14px 14px 12px", flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ fontFamily: MONO, fontSize: 8, color: C.gold, letterSpacing: "0.12em", textTransform: "uppercase" }}>{item.brand}</div>
+          <div style={{ fontFamily: SERIF, fontSize: 14, color: C.text, lineHeight: 1.3, flex: 1 }}>
+            {item.line && item.line !== item.brand ? item.line + " " : ""}
+            {item.model_number || ""}
+            {!item.line && !item.model_number ? item.display_name.replace(item.brand, "").trim() : ""}
+          </div>
+          {item.material && <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim }}>{item.material}{item.size_cm ? " · " + item.size_cm : ""}</div>}
+
+          {/* Price area */}
+          <div style={{ marginTop: 6 }}>
+            {hasLive ? (
+              <div>
+                <div style={{ fontFamily: SERIF, fontSize: 20, color: C.text, letterSpacing: "-0.02em" }}>{fmt(live.avgPrice)}</div>
+                <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, marginTop: 2 }}>
+                  {fmt(live.lowPrice)} – {fmt(live.highPrice)} · {live.numListings} listings
+                </div>
+              </div>
+            ) : item.msrp ? (
+              <div style={{ fontFamily: MONO, fontSize: 9, color: C.textDim }}>MSRP {fmt(item.msrp)}</div>
+            ) : (
+              <div style={{ fontFamily: MONO, fontSize: 9, color: C.textDim }}>—</div>
+            )}
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div style={{ padding: "0 12px 12px", display: "flex", gap: 6 }}>
+          {owned ? (
+            <div style={{ flex: 1, padding: "7px", background: g(0.08), border: `1px solid ${g(0.2)}`, borderRadius: 2, fontFamily: MONO, fontSize: 8, color: C.gold, textAlign: "center" }}>
+              ✓ {entry?.condition?.toUpperCase() || "IN VAULT"}
+            </div>
+          ) : hasLive ? (
+            <button onClick={() => openAddModal(addableItem)}
+              style={{ flex: 1, padding: "7px", background: "transparent", border: `1px solid ${C.borderGold}`, borderRadius: 2, color: C.gold, cursor: "pointer", fontFamily: MONO, fontSize: 8, letterSpacing: "0.08em", transition: "background 0.15s" }}
+              onMouseEnter={e => e.currentTarget.style.background = g(0.12)}
+              onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+              ADD TO VAULT
+            </button>
+          ) : (
+            <button onClick={() => getLivePrices(item)} disabled={fetching}
+              style={{ flex: 1, padding: "7px", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 2, color: fetching ? C.textDim : C.textMid, cursor: fetching ? "wait" : "pointer", fontFamily: MONO, fontSize: 8, letterSpacing: "0.06em", transition: "all 0.15s" }}
+              onMouseEnter={e => { if (!fetching) { e.currentTarget.style.borderColor = C.gold; e.currentTarget.style.color = C.gold; } }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textMid; }}>
+              {fetching ? "SEARCHING..." : "GET LIVE PRICES"}
+            </button>
+          )}
+          {hasLive && (
+            <button onClick={() => setDetailModal(addableItem)}
+              style={{ padding: "7px 10px", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 2, color: C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 8 }}>
+              →
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // ── Live search results (when user runs explicit search) ──
+  const hasLiveResults = searchResults.length > 0 && !searchResults.some(r => r._discovering);
+  const PLATFORMS_SHORT2 = { "Fashionphile": "FP", "Rebag": "RB", "Privé Porter": "PP", "Madison Avenue Couture": "MAC", "Ann's Fabulous Finds": "AFF", "eBay (Sold)": "eBay", "Beladora": "BLD", "LuxeDH": "LDH" };
+
+  return (
+    <div style={{ display: "flex", gap: 0, minHeight: "60vh" }}>
+
+      {/* ── Sidebar (desktop) ── */}
+      {!isMobile && (
+        <div style={{ width: 220, flexShrink: 0, paddingRight: 28, borderRight: `1px solid ${C.border}` }}>
+          {sidebar}
+        </div>
+      )}
+
+      {/* ── Main content ── */}
+      <div style={{ flex: 1, minWidth: 0, paddingLeft: isMobile ? 0 : 28 }}>
+
+        {/* Top bar: search + controls */}
+        <div style={{ marginBottom: 20 }}>
+          {/* Search input */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+            <div style={{ flex: 1, display: "flex", border: `1px solid ${C.border}`, background: C.surface, borderRadius: 2, overflow: "hidden" }}>
+              <input
+                type="text"
+                placeholder="Search catalog — Rolex Daytona, Birkin 25, Chanel Flap..."
+                value={catQInput}
+                onChange={e => handleQChange(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") { applyFilter("q", catQInput); } }}
+                style={{ flex: 1, padding: "12px 14px", background: "transparent", border: "none", color: C.text, fontFamily: MONO, fontSize: 11, outline: "none" }}
+              />
+              {catQInput && (
+                <button onClick={() => { setCatQInput(""); applyFilter("q", ""); }}
+                  style={{ padding: "0 12px", background: "transparent", border: "none", color: C.textDim, cursor: "pointer", fontFamily: MONO, fontSize: 14 }}>×</button>
+              )}
+            </div>
+            {isMobile && (
+              <button onClick={() => setMobileFiltersOpen(v => !v)}
+                style={{ padding: "0 14px", background: mobileFiltersOpen ? g(0.12) : "transparent", border: `1px solid ${mobileFiltersOpen ? C.gold : C.border}`, borderRadius: 2, color: mobileFiltersOpen ? C.gold : C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 10 }}>
+                FILTER
+              </button>
+            )}
+          </div>
+
+          {/* Mobile filters drawer */}
+          {isMobile && mobileFiltersOpen && (
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 2, padding: "16px", marginBottom: 14 }}>
+              {sidebar}
+            </div>
+          )}
+
+          {/* Active filter chips + results count */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              {catCategory !== "All" && (
+                <span style={{ padding: "3px 10px", background: g(0.1), border: `1px solid ${g(0.25)}`, borderRadius: 2, fontFamily: MONO, fontSize: 9, color: C.gold, display: "flex", alignItems: "center", gap: 6 }}>
+                  {catCategory}
+                  <button onClick={() => applyFilter("category", "All")} style={{ background: "none", border: "none", color: C.gold, cursor: "pointer", padding: 0, lineHeight: 1, fontSize: 11 }}>×</button>
+                </span>
+              )}
+              {catBrand && (
+                <span style={{ padding: "3px 10px", background: g(0.1), border: `1px solid ${g(0.25)}`, borderRadius: 2, fontFamily: MONO, fontSize: 9, color: C.gold, display: "flex", alignItems: "center", gap: 6 }}>
+                  {catBrand}
+                  <button onClick={() => applyFilter("brand", "")} style={{ background: "none", border: "none", color: C.gold, cursor: "pointer", padding: 0, lineHeight: 1, fontSize: 11 }}>×</button>
+                </span>
+              )}
+              {catSubcat && (
+                <span style={{ padding: "3px 10px", background: g(0.1), border: `1px solid ${g(0.25)}`, borderRadius: 2, fontFamily: MONO, fontSize: 9, color: C.gold, display: "flex", alignItems: "center", gap: 6 }}>
+                  {catSubcat}
+                  <button onClick={() => applyFilter("subcat", "")} style={{ background: "none", border: "none", color: C.gold, cursor: "pointer", padding: 0, lineHeight: 1, fontSize: 11 }}>×</button>
+                </span>
+              )}
+              {catQ && (
+                <span style={{ padding: "3px 10px", background: g(0.1), border: `1px solid ${g(0.25)}`, borderRadius: 2, fontFamily: MONO, fontSize: 9, color: C.gold, display: "flex", alignItems: "center", gap: 6 }}>
+                  "{catQ}"
+                  <button onClick={() => { setCatQInput(""); applyFilter("q", ""); }} style={{ background: "none", border: "none", color: C.gold, cursor: "pointer", padding: 0, lineHeight: 1, fontSize: 11 }}>×</button>
+                </span>
+              )}
+            </div>
+            <div style={{ fontFamily: MONO, fontSize: 9, color: C.textDim }}>
+              {catLoading ? "Loading..." : `${catTotal.toLocaleString()} items`}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Catalog grid ── */}
+        {catLoading ? (
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(auto-fill, minmax(200px, 1fr))", gap: 1, background: C.border }}>
+            {Array.from({ length: 12 }).map((_, i) => (
+              <div key={i} style={{ background: C.surface, height: 280, opacity: 0.4, animation: "pulse 1.5s ease-in-out infinite", animationDelay: `${i * 0.08}s` }} />
+            ))}
+          </div>
+        ) : catItems.length === 0 ? (
+          <div style={{ padding: "60px 0", textAlign: "center" }}>
+            <div style={{ fontFamily: SERIF, fontSize: 22, color: C.textMid, marginBottom: 8, fontWeight: 300 }}>No items found</div>
+            <div style={{ fontFamily: MONO, fontSize: 10, color: C.textDim }}>Try different filters or broaden your search</div>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(auto-fill, minmax(200px, 1fr))", gap: 1, background: C.border }}>
+            {catItems.map(item => (
+              <div key={item.id} style={{ background: C.bg }}>
+                {renderCatCard(item)}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Pagination ── */}
+        {catTotalPages > 1 && (
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 6, marginTop: 32 }}>
+            <button onClick={() => goPage(1)} disabled={catPage === 1}
+              style={{ padding: "6px 10px", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 2, color: catPage === 1 ? C.textDim : C.textMid, cursor: catPage === 1 ? "default" : "pointer", fontFamily: MONO, fontSize: 9 }}>
+              «
+            </button>
+            <button onClick={() => goPage(catPage - 1)} disabled={catPage === 1}
+              style={{ padding: "6px 12px", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 2, color: catPage === 1 ? C.textDim : C.textMid, cursor: catPage === 1 ? "default" : "pointer", fontFamily: MONO, fontSize: 9 }}>
+              ‹
+            </button>
+            {Array.from({ length: Math.min(7, catTotalPages) }, (_, i) => {
+              const p = catPage <= 4 ? i + 1 : catPage > catTotalPages - 4 ? catTotalPages - 6 + i : catPage - 3 + i;
+              if (p < 1 || p > catTotalPages) return null;
+              return (
+                <button key={p} onClick={() => goPage(p)}
+                  style={{ padding: "6px 10px", background: p === catPage ? g(0.15) : "transparent", border: `1px solid ${p === catPage ? C.gold : C.border}`, borderRadius: 2, color: p === catPage ? C.gold : C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 9, minWidth: 32 }}>
+                  {p}
+                </button>
+              );
+            })}
+            <button onClick={() => goPage(catPage + 1)} disabled={catPage === catTotalPages}
+              style={{ padding: "6px 12px", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 2, color: catPage === catTotalPages ? C.textDim : C.textMid, cursor: catPage === catTotalPages ? "default" : "pointer", fontFamily: MONO, fontSize: 9 }}>
+              ›
+            </button>
+            <button onClick={() => goPage(catTotalPages)} disabled={catPage === catTotalPages}
+              style={{ padding: "6px 10px", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 2, color: catPage === catTotalPages ? C.textDim : C.textMid, cursor: catPage === catTotalPages ? "default" : "pointer", fontFamily: MONO, fontSize: 9 }}>
+              »
+            </button>
+            <span style={{ fontFamily: MONO, fontSize: 9, color: C.textDim, marginLeft: 8 }}>
+              Page {catPage} of {catTotalPages.toLocaleString()}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────
+
 export default function LuxuryTracker() {
   // Show landing for new visitors; skip if they already have portfolio data
   const [showLanding, setShowLanding] = useState(() => {
@@ -336,6 +779,23 @@ export default function LuxuryTracker() {
   const [authError, setAuthError] = useState(null);
   const [authSuccess, setAuthSuccess] = useState(null);
   const [syncStatus, setSyncStatus] = useState(null); // null | 'syncing' | 'synced' | 'error'
+  // ── Catalog browse state ──
+  const [catItems,     setCatItems]     = useState([]);
+  const [catLoading,   setCatLoading]   = useState(false);
+  const [catTotal,     setCatTotal]     = useState(0);
+  const [catPage,      setCatPage]      = useState(1);
+  const [catTotalPages,setCatTotalPages]= useState(1);
+  const [catCategory,  setCatCategory]  = useState("All");
+  const [catBrand,     setCatBrand]     = useState("");
+  const [catSubcat,    setCatSubcat]    = useState("");
+  const [catSort,      setCatSort]      = useState("popular");
+  const [catQ,         setCatQ]         = useState("");
+  const [catFacets,    setCatFacets]    = useState({ brands: [], subcategories: [], suggestedBrands: [], suggestedSubcats: [] });
+  const [catQInput,    setCatQInput]    = useState("");
+  const [liveItems,    setLiveItems]    = useState({});   // itemId -> live price data
+  const [liveFetching, setLiveFetching] = useState({});  // itemId -> bool
+  const catDebounceRef = useRef(null);
+
   const inputRef = useRef(null);
 
   // Add/edit form state
@@ -1431,138 +1891,44 @@ export default function LuxuryTracker() {
 
         {/* ── SEARCH ── */}
         {view === "search" && (
-          <div>
-            <div style={{ marginBottom: 36 }}>
-              <div style={{ fontFamily: MONO, fontSize: 9, color: C.textDim, letterSpacing: "0.16em", textTransform: "uppercase", marginBottom: 18 }}>Luxury Resale Intelligence</div>
-              <div style={{ display: "flex", gap: 0, border: `1px solid ${C.border}`, borderRadius: 2, overflow: "hidden", marginBottom: 20 }}>
-                <div style={{ position: "relative", flex: 1 }}>
-                  <input ref={inputRef} type="text" value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === "Enter" && !searching && handleSearch()} placeholder="Rolex Daytona, Hermès Birkin, Cartier Love..."
-                    style={{ width: "100%", padding: "15px 44px 15px 18px", background: C.surface, border: "none", color: C.text, fontSize: 15, fontFamily: SERIF, letterSpacing: "0.02em", outline: "none" }} />
-                  {search && !searching && <button onClick={() => { setSearch(""); setSearchResults([]); setSearchError(null); setPlatformInfo(null); inputRef.current?.focus(); }} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: C.textDim, cursor: "pointer", fontSize: 18, lineHeight: 1 }}>×</button>}
-                </div>
-                <button onClick={handleSearch} disabled={searching || !search.trim()} style={{ padding: "15px 24px", background: !search.trim() ? "transparent" : C.gold, border: "none", borderLeft: `1px solid ${C.border}`, color: !search.trim() ? C.textDim : C.bg, cursor: searching ? "wait" : !search.trim() ? "default" : "pointer", fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", transition: "all 0.2s", opacity: !search.trim() ? 0.5 : 1 }}>
-                  {searching ? "···" : "Search"}
-                </button>
-              </div>
-              {!searching && !searchResults.length && !searchError && (
-                <div>
-                  {searchHistory.length > 0 && (
-                    <div style={{ marginBottom: 20 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                        <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.14em", textTransform: "uppercase" }}>Recent</div>
-                        <button onClick={() => { setSearchHistory([]); localStorage.removeItem("vault_search_history"); }} style={{ background: "none", border: "none", color: C.textDim, cursor: "pointer", fontFamily: MONO, fontSize: 8, padding: 0 }}>Clear</button>
-                      </div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                        {searchHistory.map(s => (
-                          <button key={s} onClick={() => setSearch(s)}
-                            style={{ padding: "5px 11px", background: g(0.04), border: `1px solid ${g(0.15)}`, borderRadius: 2, color: C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", display: "flex", alignItems: "center", gap: 6, transition: "all 0.15s" }}
-                            onMouseEnter={e => { e.currentTarget.style.borderColor = g(0.4); e.currentTarget.style.color = C.gold; }}
-                            onMouseLeave={e => { e.currentTarget.style.borderColor = g(0.15); e.currentTarget.style.color = C.textMid; }}>
-                            <span style={{ color: C.textDim, fontSize: 10 }}>↩</span> {s}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 10 }}>Market Intelligence</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {POPULAR_SEARCHES.map(s => <button key={s} onClick={() => setSearch(s)} style={{ padding: "6px 12px", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 2, color: C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", transition: "all 0.15s" }} onMouseEnter={e => { e.currentTarget.style.borderColor = g(0.4); e.currentTarget.style.color = C.gold; }} onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textMid; }}>{s}</button>)}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {searching && <div style={{ padding: "60px 0", display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}><div style={{ display: "flex", gap: 6 }}>{[0,1,2].map(i => <div key={i} style={{ width: 4, height: 4, background: C.gold, borderRadius: "50%", animation: `pulse 1.2s ${i*0.2}s ease-in-out infinite` }} />)}</div><div style={{ fontFamily: MONO, fontSize: 9, color: C.textDim, letterSpacing: "0.12em", textTransform: "uppercase" }}>Querying 8 platforms</div></div>}
-            {searchError && <div style={{ padding: "14px 18px", border: "1px solid rgba(224,92,92,0.2)", borderRadius: 2, marginBottom: 20 }}><div style={{ fontFamily: MONO, fontSize: 10, color: C.red }}>{searchError}</div></div>}
-
-            {!searching && searchResults.length > 0 && (
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, paddingBottom: 14, borderBottom: `1px solid ${C.border}` }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontFamily: SERIF, fontSize: 15, color: C.textMid }}>{filteredResults.length} result{filteredResults.length !== 1 ? "s" : ""}</span>
-                    {platformInfo && <span style={{ fontFamily: MONO, fontSize: 9, color: C.textDim }}>via {Object.values(platformInfo).filter(p => p.count > 0).map(p => PLATFORMS_SHORT[p.name] || p.name).join(" · ")}</span>}
-                  </div>
-                  <button onClick={() => setFiltersOpen(f => !f)} style={{ padding: "6px 12px", background: filtersOpen ? g(0.1) : "transparent", border: `1px solid ${activeFilterCount > 0 ? C.borderGold : C.border}`, borderRadius: 2, color: activeFilterCount > 0 ? C.gold : C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 9, letterSpacing: "0.1em" }}>
-                    FILTERS {activeFilterCount > 0 ? `(${activeFilterCount})` : ""}
-                  </button>
-                </div>
-
-                {filtersOpen && (
-                  <div style={{ padding: "20px 24px", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 2, marginBottom: 20, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 20 }}>
-                    <div>
-                      <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>Category</div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                        {CATEGORIES.map(c => <button key={c} onClick={() => setFilterCat(c)} style={{ padding: "4px 8px", background: filterCat === c ? g(0.15) : "transparent", border: `1px solid ${filterCat === c ? C.borderGold : C.border}`, borderRadius: 2, color: filterCat === c ? C.gold : C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 8 }}>{c}</button>)}
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>Platform</div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                        {["All", ...allPlatforms].map(p => <button key={p} onClick={() => setFilterPlatform(p)} style={{ padding: "4px 8px", background: filterPlatform === p ? g(0.15) : "transparent", border: `1px solid ${filterPlatform === p ? C.borderGold : C.border}`, borderRadius: 2, color: filterPlatform === p ? C.gold : C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 8 }}>{p === "All" ? "All" : (PLATFORMS_SHORT[p] || p.slice(0, 8))}</button>)}
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>Price Range</div>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <input type="number" placeholder="Min" value={filterMinPrice} onChange={e => setFilterMinPrice(e.target.value)} style={{ width: "100%", padding: "6px 8px", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 2, color: C.text, fontFamily: MONO, fontSize: 10, outline: "none" }} />
-                        <span style={{ color: C.textDim, fontFamily: MONO }}>—</span>
-                        <input type="number" placeholder="Max" value={filterMaxPrice} onChange={e => setFilterMaxPrice(e.target.value)} style={{ width: "100%", padding: "6px 8px", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 2, color: C.text, fontFamily: MONO, fontSize: 10, outline: "none" }} />
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ fontFamily: MONO, fontSize: 8, color: C.textDim, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>Sort</div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                        {[["relevance","Relevance"],["price-high","Price ↓"],["price-low","Price ↑"],["listings","Listings"]].map(([val, label]) => <button key={val} onClick={() => setSortBy(val)} style={{ padding: "4px 8px", background: sortBy === val ? g(0.15) : "transparent", border: `1px solid ${sortBy === val ? C.borderGold : C.border}`, borderRadius: 2, color: sortBy === val ? C.gold : C.textMid, cursor: "pointer", fontFamily: MONO, fontSize: 8 }}>{label}</button>)}
-                      </div>
-                    </div>
-                    {activeFilterCount > 0 && <div style={{ display: "flex", alignItems: "flex-end" }}><button onClick={() => { setFilterCat("All"); setFilterPlatform("All"); setFilterMinPrice(""); setFilterMaxPrice(""); setSortBy("relevance"); }} style={{ padding: "6px 12px", background: "transparent", border: "1px solid rgba(224,92,92,0.2)", borderRadius: 2, color: C.red, cursor: "pointer", fontFamily: MONO, fontSize: 8 }}>RESET</button></div>}
-                  </div>
-                )}
-
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(300px, 1fr))", gap: 1, background: C.border }}>
-                  {/* Discovering state — AI is hunting for the item */}
-                  {searching && searchResults.some(r => r._discovering) && (
-                    <div style={{ gridColumn: "1 / -1", padding: "60px 40px", textAlign: "center", border: "1px solid rgba(196,160,82,0.15)", background: "rgba(196,160,82,0.03)" }}>
-                      <div style={{ fontFamily: MONO, fontSize: 9, color: C.gold, letterSpacing: "0.2em", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-                        <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.gold, animation: "pulse 1s ease-in-out infinite" }} />
-                        SEARCHING THE OPEN WEB
-                      </div>
-                      <div style={{ fontFamily: SERIF, fontSize: 22, color: C.textMid, fontWeight: 300, marginBottom: 8 }}>Item not found in our catalog</div>
-                      <div style={{ fontFamily: MONO, fontSize: 10, color: C.textDim, lineHeight: 1.8 }}>
-                        Checking Google Shopping, eBay, and brand sites...<br />
-                        This takes 10–20 seconds for new items.
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Enriched item — discovered via AI web search */}
-                  {!searching && filteredResults.filter(r => r.enriched).map(item => (
-                    <div key={item.id} style={{ gridColumn: isMobile ? "1" : "1 / -1" }}>
-                      <div style={{ padding: "4px 12px", background: "rgba(196,160,82,0.15)", border: "1px solid rgba(196,160,82,0.3)", borderBottom: "none", display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 0, borderRadius: "2px 2px 0 0" }}>
-                        <div style={{ width: 5, height: 5, borderRadius: "50%", background: C.gold }} />
-                        <span style={{ fontFamily: MONO, fontSize: 8, color: C.gold, letterSpacing: "0.14em" }}>DISCOVERED · ADDED TO CATALOG</span>
-                      </div>
-                      {renderCard(item)}
-                      {item.noMarketData && (
-                        <div style={{ padding: "12px 16px", background: "rgba(196,160,82,0.04)", border: "1px solid rgba(196,160,82,0.12)", borderTop: "none", fontFamily: MONO, fontSize: 9, color: C.textDim, lineHeight: 1.7 }}>
-                          No resale listings found yet. This item may be too new or too rare for secondary market data. MSRP shown where known.
-                        </div>
-                      )}
-                      {item.description && (
-                        <div style={{ padding: "12px 16px", background: "rgba(196,160,82,0.02)", border: "1px solid rgba(196,160,82,0.08)", borderTop: "none", fontFamily: MONO, fontSize: 9, color: C.textDim, lineHeight: 1.7 }}>
-                          {item.description}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-
-                  {/* Normal results */}
-                  {filteredResults.filter(r => !r.enriched && !r._discovering).map(item => <div key={item.id} style={{ background: C.bg }}>{renderCard(item)}</div>)}
-                </div>
-                {filteredResults.length === 0 && <div style={{ padding: "40px 0", textAlign: "center", fontFamily: MONO, fontSize: 10, color: C.textDim }}>No results match current filters</div>}
-              </div>
-            )}
-          </div>
+          <CatalogBrowse
+            C={C} g={g} w={w} MONO={MONO} SERIF={SERIF}
+            isMobile={isMobile}
+            catItems={catItems} setCatItems={setCatItems}
+            catLoading={catLoading} setCatLoading={setCatLoading}
+            catTotal={catTotal} setCatTotal={setCatTotal}
+            catPage={catPage} setCatPage={setCatPage}
+            catTotalPages={catTotalPages} setCatTotalPages={setCatTotalPages}
+            catCategory={catCategory} setCatCategory={setCatCategory}
+            catBrand={catBrand} setCatBrand={setCatBrand}
+            catSubcat={catSubcat} setCatSubcat={setCatSubcat}
+            catSort={catSort} setCatSort={setCatSort}
+            catQ={catQ} setCatQ={setCatQ}
+            catQInput={catQInput} setCatQInput={setCatQInput}
+            catFacets={catFacets} setCatFacets={setCatFacets}
+            liveItems={liveItems} setLiveItems={setLiveItems}
+            liveFetching={liveFetching} setLiveFetching={setLiveFetching}
+            catDebounceRef={catDebounceRef}
+            isOwned={isOwned} getOwned={getOwned}
+            openAddModal={openAddModal}
+            searchResults={searchResults} setSearchResults={setSearchResults}
+            search={search} setSearch={setSearch}
+            searching={searching}
+            handleSearch={handleSearch}
+            searchError={searchError}
+            allItems={allItems} setAllItems={setAllItems}
+            filteredResults={filteredResults}
+            filterCat={filterCat} setFilterCat={setFilterCat}
+            filterPlatform={filterPlatform} setFilterPlatform={setFilterPlatform}
+            filterMinPrice={filterMinPrice} setFilterMinPrice={setFilterMinPrice}
+            filterMaxPrice={filterMaxPrice} setFilterMaxPrice={setFilterMaxPrice}
+            sortBy={sortBy} setSortBy={setSortBy}
+            platformInfo={platformInfo}
+            setDetailModal={setDetailModal}
+            inputRef={inputRef}
+            fmt={fmt}
+            API_URL={API_URL}
+          />
         )}
       </main>
 
