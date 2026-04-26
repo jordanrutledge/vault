@@ -4,3 +4,7 @@ node_modules
 dist
 .env.local
 .env*.local
+
+# Script secrets
+scripts/.env
+.env.local

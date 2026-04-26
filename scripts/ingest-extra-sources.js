@@ -1,8 +1,10 @@
+// Load .env for local script execution
+require('dotenv').config({ path: __dirname + '/.env' });
 const https  = require('https');
 const { createClient } = require('@supabase/supabase-js');
 const supabase = createClient(
   'https://khbgwxhoxtdmkwcuwotc.supabase.co',
-  'REDACTED_SERVICE_KEY'
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 const SOURCES = [

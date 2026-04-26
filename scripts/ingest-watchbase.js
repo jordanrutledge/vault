@@ -1,3 +1,5 @@
+// Load .env for local script execution
+require('dotenv').config({ path: __dirname + '/.env' });
 #!/usr/bin/env node
 // WatchBase Catalog Ingestion
 // Uses Buffer.from(hex) to build tag strings at runtime — avoids terminal rendering issues
@@ -5,7 +7,7 @@ const https  = require('https');
 const { createClient } = require('@supabase/supabase-js');
 
 const SUPABASE_URL = 'https://khbgwxhoxtdmkwcuwotc.supabase.co';
-const SUPABASE_KEY = 'REDACTED_SERVICE_KEY';
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const WB_KEY        = 'B4PMCSMEXeGo1c0Lpk5HmEQw2bKhSqaIwzhuJ9cy';
 const supabase      = createClient(SUPABASE_URL, SUPABASE_KEY);
 
