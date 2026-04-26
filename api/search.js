@@ -297,6 +297,19 @@ module.exports = async function handler(req, res) {
     }).filter(([, v]) => v.count > 0)
   );
 
+    // Zero-results: signal frontend to call /api/enrich
+  if (items.length === 0 && all.length === 0) {
+    console.log('[search] zero results -- triggering enrichment for:', q);
+    return res.status(200).json({
+      query: q,
+      totalListings: 0,
+      items: [],
+      platforms: {},
+      timestamp: new Date().toISOString(),
+      enriching: true,
+    });
+  }
+
   const response = {
     query: q,
     originalQuery: rawQuery.trim() !== q ? rawQuery.trim() : undefined,

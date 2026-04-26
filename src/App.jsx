@@ -49,6 +49,21 @@ function getTrend(history) {
   return ((history[history.length - 1].price - history[0].price) / history[0].price) * 100;
 }
 
+const FRONTEND_BRANDS = [
+  "Rolex","Patek Philippe","Audemars Piguet","Omega","Cartier","Hermès","Hermes",
+  "Chanel","Louis Vuitton","Gucci","Prada","Dior","Christian Dior","Goyard",
+  "Van Cleef & Arpels","Tiffany","Bottega Veneta","Celine","Bulgari","Bvlgari",
+  "Nike","Jordan","IWC","Tudor","Breitling","Hublot","Panerai","Fendi",
+  "Balenciaga","Saint Laurent","Valentino","Givenchy","Loewe","Miu Miu",
+  "Versace","Burberry","Chloe","Rimowa","TAG Heuer","Zenith","Jaeger-LeCoultre",
+  "Vacheron Constantin","Richard Mille","Piaget",
+];
+function extractBrand(q) {
+  const l = (q || "").toLowerCase();
+  for (const b of FRONTEND_BRANDS) { if (l.includes(b.toLowerCase())) return b; }
+  return "";
+}
+
 function Sparkline({ data, width = 80, height = 28, color }) {
   if (!data || data.length < 2) return null;
   const prices = data.map(d => d.price);
@@ -508,7 +523,6 @@ export default function LuxuryTracker() {
 
   const handleSearch = useCallback(async () => {
     if (!search.trim()) return;
-    // Save to history
     const q = search.trim();
     setSearchHistory(prev => {
       const next = [q, ...prev.filter(h => h !== q)].slice(0, 8);
@@ -519,7 +533,74 @@ export default function LuxuryTracker() {
     setFiltersOpen(false); setFilterCat("All"); setFilterPlatform("All"); setFilterMinPrice(""); setFilterMaxPrice("");
     try {
       const data = await searchAPI(search.trim());
-      if (!data.items.length) { setSearchError("No results found. Try a different search term."); }
+
+      // Zero results — kick off AI enrichment pipeline
+      if (data.enriching) {
+        setSearchError(null);
+        setSearching(true);
+        // Show a special discovering state
+        setSearchResults([{ _discovering: true, id: "discovering", brand: "", name: "", category: "", avgPrice: 0, lowPrice: 0, highPrice: 0, numListings: 0, sources: [], imageUrl: null, sampleUrls: [] }]);
+        try {
+          const enrichResp = await fetch(`${API_URL}/api/enrich`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query: q }),
+          });
+          const enrichData = await enrichResp.json();
+          if (enrichData.liveListings?.length > 0) {
+            // Convert live listings into search result format
+            const enrichedItems = [{
+              id: `enriched-${Date.now()}`,
+              key: (enrichData.enriched?.brand || q).toLowerCase().replace(/[^a-z0-9]/g, "-"),
+              brand: enrichData.enriched?.brand || extractBrand(q) || q.split(" ")[0],
+              name: enrichData.enriched?.displayName || q,
+              category: enrichData.enriched?.category || "Accessories",
+              avgPrice: enrichData.avgMarketPrice || 0,
+              lowPrice: Math.min(...enrichData.liveListings.map(l => l.price).filter(Boolean)) || 0,
+              highPrice: Math.max(...enrichData.liveListings.map(l => l.price).filter(Boolean)) || 0,
+              numListings: enrichData.totalFound || 0,
+              sources: [...new Set(enrichData.liveListings.map(l => l.platform))],
+              imageUrl: enrichData.liveListings.find(l => l.imageUrl)?.imageUrl || null,
+              sampleUrls: enrichData.liveListings.slice(0, 5).map(l => ({ platform: l.platform, url: l.url })),
+              msrp: enrichData.msrp,
+              enriched: true,
+              description: enrichData.enriched?.description,
+            }];
+            setSearchResults(enrichedItems);
+            setAllItems(prev => { const ex = new Set(prev.map(i => i.id)); return [...prev, ...enrichedItems.filter(r => !ex.has(r.id))]; });
+          } else if (enrichData.enriched && enrichData.enriched.confidence !== "none") {
+            // Identified but no market listings yet — show what we know
+            const partialItem = {
+              id: `enriched-${Date.now()}`,
+              key: enrichData.enriched.brand?.toLowerCase().replace(/[^a-z0-9]/g, "-") + "-" + Date.now(),
+              brand: enrichData.enriched.brand || q.split(" ")[0],
+              name: enrichData.enriched.displayName || q,
+              category: enrichData.enriched.category || "Accessories",
+              avgPrice: enrichData.msrp || 0,
+              lowPrice: enrichData.msrp || 0,
+              highPrice: enrichData.msrp || 0,
+              numListings: 0,
+              sources: ["Brand Site"],
+              imageUrl: null,
+              sampleUrls: [],
+              msrp: enrichData.msrp,
+              enriched: true,
+              noMarketData: true,
+              description: enrichData.enriched.description,
+            };
+            setSearchResults([partialItem]);
+            setAllItems(prev => { const ex = new Set(prev.map(i => i.id)); return [...prev, partialItem].filter(r => !ex.has(r.id) || r === partialItem); });
+          } else {
+            setSearchResults([]);
+            setSearchError("This item could not be found anywhere on the web. Double-check the brand and product name.");
+          }
+        } catch (enrichErr) {
+          setSearchResults([]);
+          setSearchError("No results found. Try a different search term.");
+        }
+        return;
+      }
+
+      if (!data.items.length) { setSearchError("No results found. Try a different search term."); setSearchResults([]); }
       else {
         setSearchResults(data.items); setPlatformInfo(data.platforms);
         setAllItems(prev => { const ex = new Set(prev.map(i => i.id)); return [...prev, ...data.items.filter(r => !ex.has(r.id))]; });
@@ -1439,7 +1520,44 @@ export default function LuxuryTracker() {
                 )}
 
                 <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(300px, 1fr))", gap: 1, background: C.border }}>
-                  {filteredResults.map(item => <div key={item.id} style={{ background: C.bg }}>{renderCard(item)}</div>)}
+                  {/* Discovering state — AI is hunting for the item */}
+                  {searching && searchResults.some(r => r._discovering) && (
+                    <div style={{ gridColumn: "1 / -1", padding: "60px 40px", textAlign: "center", border: , background: g(0.03) }}>
+                      <div style={{ fontFamily: MONO, fontSize: 9, color: C.gold, letterSpacing: "0.2em", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                        <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.gold, animation: "pulse 1s ease-in-out infinite" }} />
+                        SEARCHING THE OPEN WEB
+                      </div>
+                      <div style={{ fontFamily: SERIF, fontSize: 22, color: C.textMid, fontWeight: 300, marginBottom: 8 }}>Item not found in our catalog</div>
+                      <div style={{ fontFamily: MONO, fontSize: 10, color: C.textDim, lineHeight: 1.8 }}>
+                        Checking Google Shopping, eBay, and brand sites...<br />
+                        This takes 10–20 seconds for new items.
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Enriched item — discovered via AI web search */}
+                  {!searching && filteredResults.filter(r => r.enriched).map(item => (
+                    <div key={item.id} style={{ gridColumn: isMobile ? "1" : "1 / -1" }}>
+                      <div style={{ padding: "4px 12px", background: g(0.15), border: , borderBottom: "none", display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 0, borderRadius: "2px 2px 0 0" }}>
+                        <div style={{ width: 5, height: 5, borderRadius: "50%", background: C.gold }} />
+                        <span style={{ fontFamily: MONO, fontSize: 8, color: C.gold, letterSpacing: "0.14em" }}>DISCOVERED · ADDED TO CATALOG</span>
+                      </div>
+                      {renderCard(item)}
+                      {item.noMarketData && (
+                        <div style={{ padding: "12px 16px", background: g(0.04), border: , borderTop: "none", fontFamily: MONO, fontSize: 9, color: C.textDim, lineHeight: 1.7 }}>
+                          No resale listings found yet. This item may be too new or too rare for secondary market data. MSRP shown where known.
+                        </div>
+                      )}
+                      {item.description && (
+                        <div style={{ padding: "12px 16px", background: g(0.02), border: , borderTop: "none", fontFamily: MONO, fontSize: 9, color: C.textDim, lineHeight: 1.7 }}>
+                          {item.description}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {/* Normal results */}
+                  {filteredResults.filter(r => !r.enriched && !r._discovering).map(item => <div key={item.id} style={{ background: C.bg }}>{renderCard(item)}</div>)}
                 </div>
                 {filteredResults.length === 0 && <div style={{ padding: "40px 0", textAlign: "center", fontFamily: MONO, fontSize: 10, color: C.textDim }}>No results match current filters</div>}
               </div>
