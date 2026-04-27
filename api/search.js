@@ -31,6 +31,21 @@ const QUERY_ALIASES = {
 function normalizeQuery(q) {
   let n = q.trim();
   for (const [p, r] of Object.entries(QUERY_ALIASES)) n = n.replace(new RegExp(p, "i"), r);
+
+  // Strip internal SKU tokens (e.g. "10-10-LNG-BXLUEQ", "prj_AbPlGiNV9")
+  // Keep real reference numbers like "116500LN", "5711/1A"
+  n = n.replace(/\b\d{2}-\d{2}-[A-Z]{2,}-[A-Z0-9]{4,}\b/g, "").trim();
+
+  // Strip lone long alphanumeric strings that look like internal IDs
+  n = n.replace(/\b[A-Z]{2,}\d{4,}[A-Z0-9]*\b/g, m => {
+    // Keep if it looks like a real watch ref (e.g. "116500LN", "PAM00441", "IW500401")
+    if (/^[A-Z]{0,4}\d{4,6}[A-Z0-9]{0,4}$/.test(m)) return m;
+    return "";
+  }).replace(/\s+/g, " ").trim();
+
+  // If query got too short after stripping, return original brand-based form
+  if (n.split(" ").filter(Boolean).length < 1) n = q.trim();
+
   return n.trim();
 }
 
@@ -163,7 +178,9 @@ async function scrapeEbay(query, limit) {
       if (!name || name.length < 8) return;
       const nameLower = name.toLowerCase();
       const matchCount = queryWords.filter(w => nameLower.includes(w)).length;
-      if (queryWords.length > 0 && matchCount === 0) return;
+      // Require 40% of query words to match (min 1), looser for short queries
+      const minMatch = queryWords.length <= 1 ? 1 : Math.max(1, Math.floor(queryWords.length * 0.4));
+      if (queryWords.length > 0 && matchCount < minMatch) return;
       const text = $el.text();
       const priceMatch = text.match(/\$([\d,]+\.?\d*)/);
       if (!priceMatch) return;

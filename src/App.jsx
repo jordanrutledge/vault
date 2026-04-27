@@ -464,10 +464,37 @@ function CatalogBrowse({
   }
 
   // ── Get live prices for a catalog item ──
+  function buildLiveQuery(item) {
+    const brand  = item.brand || "";
+    const line   = item.line  || "";
+    const model  = item.model_number || "";
+    const display= item.display_name || "";
+
+    // Detect internal/garbage SKUs — contains multiple dashes or starts with digit-dash pattern
+    const isInternalSku = /^\d{2}-|[A-Z0-9]{4,}-[A-Z0-9]{4,}/.test(model);
+
+    if (!isInternalSku && model && model.length <= 20) {
+      // Real reference number — use brand + model (e.g. "Rolex 116500LN")
+      return (brand + " " + model).trim();
+    }
+
+    if (line && line !== brand) {
+      // Has a real product line — use brand + line (e.g. "Hermès Birkin", "Omega Speedmaster")
+      return (brand + " " + line).trim();
+    }
+
+    // Fall back: extract first 3-4 meaningful words from display_name, strip brand prefix
+    const stripped = display
+      .replace(new RegExp(brand, "gi"), "")
+      .replace(/\b(stainless steel|yellow gold|rose gold|white gold|leather|canvas|monogram|quilted|limited edition|automatic|quartz|chronograph)\b/gi, "")
+      .replace(/\s+/g, " ").trim();
+    const words = stripped.split(" ").filter(w => w.length > 2 && !/^\d{8,}$/.test(w)).slice(0, 3);
+    const q = (brand + " " + words.join(" ")).trim();
+    return q || brand;
+  }
+
   async function getLivePrices(item) {
-    const query = [item.brand, item.line, item.model_number]
-      .filter(Boolean).join(" ").replace(/\s+/g," ").trim()
-      || item.display_name;
+    const query = buildLiveQuery(item);
     setLiveFetching(prev => ({ ...prev, [item.id]: true }));
     try {
       const resp = await fetch(`${API_URL}/api/search`, {
