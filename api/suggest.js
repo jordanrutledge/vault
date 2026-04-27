@@ -42,10 +42,14 @@ module.exports = async function handler(req, res) {
       }));
 
     // 2. Item matches — use pg_trgm similarity for fuzzy name/model search
-    const { data: itemRows } = await supabase.rpc("search_catalog_suggest", {
-      search_query: q,
-      result_limit: limit,
-    }).catch(() => ({ data: null }));
+    let itemRows = null;
+    try {
+      const rpcResult = await supabase.rpc("search_catalog_suggest", {
+        search_query: q,
+        result_limit: limit,
+      });
+      itemRows = rpcResult.data;
+    } catch (e) { itemRows = null; }
 
     // Fallback: plain ilike if RPC not available
     const { data: fallbackRows } = !itemRows ? await supabase
