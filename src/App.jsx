@@ -314,6 +314,7 @@ function CatalogBrowse({
   ];
 
   const [mobileFiltersOpen, setMobileFiltersOpen] = React.useState(false);
+  const [catModal, setCatModal] = React.useState(null); // catalog item detail modal
   const [brandSearch,       setBrandSearch]       = React.useState("");
   const [priceMin,          setPriceMin]          = React.useState("");
   const [priceMax,          setPriceMax]          = React.useState("");
@@ -639,8 +640,8 @@ function CatalogBrowse({
         onMouseLeave={e => { if (!owned) e.currentTarget.style.borderColor=C.border; }}>
 
         {/* Image */}
-        <div style={{ position:"relative", background:"#0a0b0c", height:160, display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", cursor: hasLive?"pointer":"default" }}
-          onClick={() => hasLive && setDetailModal(addableItem)}>
+        <div style={{ position:"relative", background:"#0a0b0c", height:160, display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", cursor:"pointer" }}
+          onClick={() => setCatModal(item)}>
           {imgSrc ? (
             <img src={imgSrc} alt={item.display_name}
               style={{ width:"100%", height:160, objectFit:"contain", padding:"12px", boxSizing:"border-box" }}
@@ -703,33 +704,33 @@ function CatalogBrowse({
               ✓ {entry?.condition?.toUpperCase() || "IN VAULT"}
             </div>
           ) : hasLive ? (
-            <>
-              <button onClick={() => openAddModal(addableItem)}
-                style={{ flex:1, padding:"7px", background:"transparent", border:`1px solid ${C.borderGold}`, borderRadius:2, color:C.gold, cursor:"pointer", fontFamily:MONO, fontSize:8, letterSpacing:"0.08em", transition:"background 0.15s" }}
-                onMouseEnter={e => e.currentTarget.style.background=g(0.12)}
-                onMouseLeave={e => e.currentTarget.style.background="transparent"}>
-                ADD TO VAULT
-              </button>
-              <button onClick={() => setDetailModal(addableItem)}
-                style={{ padding:"7px 10px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:2, color:C.textMid, cursor:"pointer", fontFamily:MONO, fontSize:10 }}>
-                →
-              </button>
-            </>
+            <button onClick={() => openAddModal(addableItem)}
+              style={{ flex:1, padding:"7px", background:"transparent", border:`1px solid ${C.borderGold}`, borderRadius:2, color:C.gold, cursor:"pointer", fontFamily:MONO, fontSize:8, letterSpacing:"0.08em", transition:"background 0.15s" }}
+              onMouseEnter={e => e.currentTarget.style.background=g(0.12)}
+              onMouseLeave={e => e.currentTarget.style.background="transparent"}>
+              ADD TO VAULT
+            </button>
           ) : (
-            <button onClick={() => getLivePrices(item)} disabled={fetching}
-              style={{ flex:1, padding:"7px", background:"transparent", border:`1px solid ${fetching ? C.border : C.border}`, borderRadius:2, color: fetching ? C.textDim : C.textMid, cursor: fetching ? "wait" : "pointer", fontFamily:MONO, fontSize:8, letterSpacing:"0.06em", transition:"all 0.15s" }}
+            <button onClick={e => { e.stopPropagation(); getLivePrices(item); }} disabled={fetching}
+              style={{ flex:1, padding:"7px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:2, color: fetching ? C.textDim : C.textMid, cursor: fetching ? "wait" : "pointer", fontFamily:MONO, fontSize:8, letterSpacing:"0.06em", transition:"all 0.15s" }}
               onMouseEnter={e => { if (!fetching) { e.currentTarget.style.borderColor=C.gold; e.currentTarget.style.color=C.gold; } }}
               onMouseLeave={e => { e.currentTarget.style.borderColor=C.border; e.currentTarget.style.color=C.textMid; }}>
               {fetching ? "SEARCHING..." : "GET LIVE PRICES"}
             </button>
           )}
+          <button onClick={() => setCatModal(item)}
+            style={{ padding:"7px 10px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:2, color:C.textMid, cursor:"pointer", fontFamily:MONO, fontSize:10, letterSpacing:"0.04em", transition:"all 0.15s" }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor=C.gold; e.currentTarget.style.color=C.gold; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor=C.border; e.currentTarget.style.color=C.textMid; }}>
+            ···
+          </button>
         </div>
       </div>
     );
   };
 
   // ── Main render ──
-  return (
+  return (<>
     <div style={{ display:"flex", flexDirection:"column", minHeight:"60vh" }}>
 
       {/* ── Mobile category strip (always visible) ── */}
@@ -933,8 +934,226 @@ function CatalogBrowse({
         </div>
       </div>
     </div>
+
+  </>
   );
 }
+
+
+// ── Catalog Item Detail Modal ─────────────────────────────────────────────
+function CatalogItemModal({ item, catalogItem, liveData, onClose, onGetLive, onAdd, onDetail, isOwned, getOwned, isFetching, C, g, MONO, SERIF, fmt, isMobile }) {
+  const live    = liveData;
+  const hasLive = live && !live.noResults && !live.error;
+  const owned   = isOwned(item.id);
+  const entry   = getOwned(item.id);
+  const ci      = catalogItem || item; // catalog-enriched version
+
+  // Build specs list from catalog fields
+  const specs = [
+    ci.category       && ["Category",      ci.category],
+    ci.subcategory    && ["Type",           ci.subcategory],
+    ci.reference_family && ["Family",       ci.reference_family],
+    ci.model_number   && ["Reference",      ci.model_number],
+    ci.movement       && ["Movement",       ci.movement],
+    ci.case_size_mm   && ["Case Size",      ci.case_size_mm + "mm"],
+    ci.dial_color     && ["Dial",           ci.dial_color],
+    ci.material       && ["Material",       ci.material],
+    ci.bracelet_material && ["Bracelet",    ci.bracelet_material],
+    ci.gender         && ["Gender",         ci.gender],
+    (ci.year_introduced || ci.year_from) && ["Year",
+      ci.year_introduced ? String(ci.year_introduced) :
+      ci.year_from && ci.year_to ? ci.year_from + "–" + ci.year_to :
+      ci.year_from ? ci.year_from + "+" : ""],
+    ci.limited_edition && ["Edition",       "Limited Edition"],
+    ci.size_cm        && ["Size",           ci.size_cm],
+    ci.msrp           && ["Retail (MSRP)",  fmt(ci.msrp)],
+  ].filter(Boolean);
+
+  const imgSrc = (hasLive && live.imageUrl) ? live.imageUrl : ci.image_url || item.imageUrl;
+
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, zIndex:1000, background:"rgba(0,0,0,0.85)", display:"flex", alignItems:"center", justifyContent:"center", padding: isMobile ? "0" : "24px" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:"#0d0e10", border:`1px solid ${g(0.2)}`, borderRadius:4, width:"100%", maxWidth:900, maxHeight: isMobile ? "100dvh" : "90vh", overflowY:"auto", display:"flex", flexDirection: isMobile ? "column" : "row", position:"relative" }}>
+
+        {/* Close */}
+        <button onClick={onClose} style={{ position:"absolute", top:14, right:14, zIndex:10, background:"transparent", border:"none", color:C.textDim, cursor:"pointer", fontSize:20, lineHeight:1, padding:"4px 8px" }}>×</button>
+
+        {/* ── Left: Image + actions ── */}
+        <div style={{ width: isMobile ? "100%" : 360, flexShrink:0, background:"#08090a", display:"flex", flexDirection:"column" }}>
+          {/* Image */}
+          <div style={{ flex:1, minHeight: isMobile ? 220 : 320, display:"flex", alignItems:"center", justifyContent:"center", padding:24, position:"relative" }}>
+            {imgSrc ? (
+              <img src={imgSrc} alt={ci.display_name}
+                style={{ maxWidth:"100%", maxHeight: isMobile ? 200 : 280, objectFit:"contain" }}
+                onError={e => e.target.style.display="none"} />
+            ) : (
+              <div style={{ textAlign:"center", opacity:0.15 }}>
+                <div style={{ fontFamily:SERIF, fontSize:64, color:C.textDim }}>
+                  {ci.category==="Watches" ? "◷" : ci.category==="Handbags" ? "◻" : ci.category==="Jewelry" ? "◇" : "○"}
+                </div>
+                <div style={{ fontFamily:MONO, fontSize:9, color:C.textDim, marginTop:8 }}>{ci.model_number || "No image"}</div>
+              </div>
+            )}
+            {owned && (
+              <div style={{ position:"absolute", top:12, left:12, padding:"3px 8px", background:g(0.25), border:`1px solid ${g(0.4)}`, fontFamily:MONO, fontSize:7, color:C.gold, letterSpacing:"0.1em" }}>IN VAULT</div>
+            )}
+            {hasLive && (
+              <div style={{ position:"absolute", bottom:12, left:12, padding:"2px 7px", background:"rgba(8,9,10,0.9)", border:`1px solid ${C.green}`, fontFamily:MONO, fontSize:7, color:C.green, letterSpacing:"0.08em" }}>LIVE DATA</div>
+            )}
+          </div>
+
+          {/* Price */}
+          <div style={{ padding:"16px 20px", borderTop:`1px solid ${g(0.1)}` }}>
+            {hasLive ? (
+              <>
+                <div style={{ fontFamily:SERIF, fontSize:32, color:C.text, letterSpacing:"-0.02em", marginBottom:4 }}>{fmt(live.avgPrice)}</div>
+                <div style={{ display:"flex", justifyContent:"space-between", fontFamily:MONO, fontSize:9, color:C.textDim, marginBottom:10 }}>
+                  <span>Low {fmt(live.lowPrice)}</span>
+                  <span>High {fmt(live.highPrice)}</span>
+                </div>
+                <div style={{ fontFamily:MONO, fontSize:8, color:C.textDim, marginBottom:14 }}>
+                  {live.numListings} listings across {(live.sources||[]).slice(0,4).join(", ")}
+                </div>
+              </>
+            ) : ci.msrp ? (
+              <div style={{ marginBottom:14 }}>
+                <div style={{ fontFamily:MONO, fontSize:8, color:C.textDim, letterSpacing:"0.1em", marginBottom:4 }}>RETAIL (MSRP)</div>
+                <div style={{ fontFamily:SERIF, fontSize:28, color:C.textMid }}>{fmt(ci.msrp)}</div>
+              </div>
+            ) : (
+              <div style={{ fontFamily:MONO, fontSize:9, color:C.textDim, marginBottom:14 }}>No pricing data yet</div>
+            )}
+
+            {/* Action buttons */}
+            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+              {owned ? (
+                <div style={{ padding:"9px", background:g(0.08), border:`1px solid ${g(0.2)}`, borderRadius:2, fontFamily:MONO, fontSize:9, color:C.gold, textAlign:"center" }}>
+                  ✓ {entry?.condition?.toUpperCase() || "IN VAULT"} · {entry?.purchasePrice ? fmt(entry.purchasePrice) : ""}
+                </div>
+              ) : hasLive ? (
+                <button onClick={() => { onAdd({ id:item.id, key:item.id, brand:ci.brand, name:ci.display_name, category:ci.category, avgPrice:live.avgPrice, lowPrice:live.lowPrice, highPrice:live.highPrice, numListings:live.numListings, sources:live.sources||[], imageUrl:live.imageUrl||ci.image_url, sampleUrls:live.sampleUrls||[] }); onClose(); }}
+                  style={{ padding:"10px", background:"transparent", border:`1px solid ${C.gold}`, borderRadius:2, color:C.gold, cursor:"pointer", fontFamily:MONO, fontSize:9, letterSpacing:"0.1em" }}>
+                  ADD TO VAULT
+                </button>
+              ) : (
+                <button onClick={() => onGetLive(ci)} disabled={isFetching}
+                  style={{ padding:"10px", background:"transparent", border:`1px solid ${isFetching ? C.border : C.textMid}`, borderRadius:2, color: isFetching ? C.textDim : C.textMid, cursor: isFetching ? "wait" : "pointer", fontFamily:MONO, fontSize:9, letterSpacing:"0.08em" }}>
+                  {isFetching ? "SEARCHING LIVE PRICES..." : "GET LIVE PRICES"}
+                </button>
+              )}
+              {hasLive && (
+                <button onClick={() => { onDetail({ id:item.id, key:item.id, brand:ci.brand, name:ci.display_name, category:ci.category, avgPrice:live.avgPrice, lowPrice:live.lowPrice, highPrice:live.highPrice, numListings:live.numListings, sources:live.sources||[], imageUrl:live.imageUrl||ci.image_url, sampleUrls:live.sampleUrls||[] }); onClose(); }}
+                  style={{ padding:"9px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:2, color:C.textMid, cursor:"pointer", fontFamily:MONO, fontSize:9, letterSpacing:"0.08em" }}>
+                  VIEW FULL DETAIL →
+                </button>
+              )}
+              {live?.sampleUrls?.length > 0 && (
+                <div style={{ marginTop:4 }}>
+                  <div style={{ fontFamily:MONO, fontSize:7, color:C.textDim, letterSpacing:"0.1em", marginBottom:5 }}>LIVE LISTINGS</div>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
+                    {live.sampleUrls.slice(0,4).map((u,i) => (
+                      <a key={i} href={u.url} target="_blank" rel="noopener noreferrer"
+                        style={{ padding:"3px 8px", background:g(0.08), border:`1px solid ${C.border}`, borderRadius:2, fontFamily:MONO, fontSize:8, color:C.textMid, textDecoration:"none" }}>
+                        {u.platform?.split(" ")[0] || "View"}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Right: Details ── */}
+        <div style={{ flex:1, padding: isMobile ? "20px 16px" : "28px 28px", overflowY:"auto" }}>
+
+          {/* Header */}
+          <div style={{ marginBottom:20, paddingBottom:16, borderBottom:`1px solid ${g(0.1)}` }}>
+            <div style={{ fontFamily:MONO, fontSize:8, color:C.gold, letterSpacing:"0.14em", textTransform:"uppercase", marginBottom:6 }}>{ci.brand}</div>
+            <div style={{ fontFamily:SERIF, fontSize: isMobile ? 22 : 28, color:C.text, lineHeight:1.2, marginBottom:6 }}>{ci.display_name.replace(new RegExp(ci.brand, 'i'), '').trim()}</div>
+            {ci.limited_edition && (
+              <span style={{ padding:"2px 8px", background:g(0.12), border:`1px solid ${g(0.3)}`, fontFamily:MONO, fontSize:8, color:C.gold }}>LIMITED EDITION</span>
+            )}
+          </div>
+
+          {/* Description */}
+          {ci.description && (
+            <div style={{ marginBottom:20, fontFamily:MONO, fontSize:10, color:C.textMid, lineHeight:1.8 }}>{ci.description}</div>
+          )}
+
+          {/* Specs grid */}
+          {specs.length > 0 && (
+            <div style={{ marginBottom:20 }}>
+              <div style={{ fontFamily:MONO, fontSize:8, color:C.textDim, letterSpacing:"0.12em", textTransform:"uppercase", marginBottom:10 }}>Specifications</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"1px", background:g(0.08), border:`1px solid ${g(0.08)}` }}>
+                {specs.map(([label, value], i) => value ? (
+                  <div key={i} style={{ padding:"8px 12px", background:"#0d0e10", display:"flex", flexDirection:"column", gap:2 }}>
+                    <div style={{ fontFamily:MONO, fontSize:7, color:C.textDim, letterSpacing:"0.1em", textTransform:"uppercase" }}>{label}</div>
+                    <div style={{ fontFamily:MONO, fontSize:10, color:C.text }}>{String(value)}</div>
+                  </div>
+                ) : null)}
+              </div>
+            </div>
+          )}
+
+          {/* Condition value table (if live prices) */}
+          {hasLive && (
+            <div style={{ marginBottom:20 }}>
+              <div style={{ fontFamily:MONO, fontSize:8, color:C.textDim, letterSpacing:"0.12em", textTransform:"uppercase", marginBottom:10 }}>Estimated Value by Condition</div>
+              <div style={{ border:`1px solid ${g(0.1)}`, borderRadius:2, overflow:"hidden" }}>
+                {[
+                  { label:"New / Unworn", mult:1.15 },
+                  { label:"Excellent",    mult:1.00 },
+                  { label:"Very Good",    mult:0.88 },
+                  { label:"Good",         mult:0.75 },
+                  { label:"Fair",         mult:0.60 },
+                ].map((c, i) => (
+                  <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"7px 12px", borderBottom: i < 4 ? `1px solid ${g(0.06)}` : "none", background: i===1 ? g(0.05) : "transparent" }}>
+                    <div style={{ fontFamily:MONO, fontSize:9, color: i===1 ? C.gold : C.textMid }}>{c.label}</div>
+                    <div style={{ fontFamily:SERIF, fontSize:14, color: i===1 ? C.text : C.textMid }}>{fmt(Math.round(live.avgPrice * c.mult))}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Live listings */}
+          {hasLive && live.sampleUrls?.length > 0 && (
+            <div style={{ marginBottom:20 }}>
+              <div style={{ fontFamily:MONO, fontSize:8, color:C.textDim, letterSpacing:"0.12em", textTransform:"uppercase", marginBottom:10 }}>Live Listings</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                {live.sampleUrls.slice(0,5).map((u, i) => (
+                  <a key={i} href={u.url} target="_blank" rel="noopener noreferrer"
+                    style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 12px", background:g(0.04), border:`1px solid ${g(0.1)}`, borderRadius:2, textDecoration:"none", transition:"border-color 0.15s" }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor=C.gold}
+                    onMouseLeave={e => e.currentTarget.style.borderColor=g(0.1)}>
+                    <span style={{ fontFamily:MONO, fontSize:9, color:C.textMid }}>{u.platform}</span>
+                    <span style={{ fontFamily:MONO, fontSize:9, color:C.gold }}>View ↗</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* No results state */}
+          {live && live.noResults && (
+            <div style={{ marginBottom:20, padding:"14px", background:g(0.04), border:`1px solid ${g(0.08)}`, borderRadius:2 }}>
+              <div style={{ fontFamily:MONO, fontSize:9, color:C.textDim, lineHeight:1.7 }}>No active listings found on our 12 platforms. This item may be rare or recently sold out. Try again later or add at MSRP.</div>
+            </div>
+          )}
+
+          {/* Source badge */}
+          {ci.source && (
+            <div style={{ fontFamily:MONO, fontSize:8, color:C.textDim }}>
+              Data: {ci.source === "watchbase" ? "WatchBase" : ci.source === "enriched" ? "AI Discovery" : ci.source === "fashionphile" ? "Fashionphile" : ci.source === "rebag" ? "Rebag" : ci.source.charAt(0).toUpperCase() + ci.source.slice(1)}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────
 
 // ── Tiny helper component ──
 function FilterChip({ label, onRemove, g, C, MONO }) {

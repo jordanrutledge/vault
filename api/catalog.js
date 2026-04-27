@@ -28,6 +28,7 @@ module.exports = async function handler(req, res) {
     category, brand, subcategory,
     q, page = "1", limit = "48", sort = "popular",
     price_min, price_max,
+    year_min, year_max, movement, case_size, gender,
   } = req.query;
 
   const pageNum  = Math.max(1, parseInt(page) || 1);
@@ -38,7 +39,7 @@ module.exports = async function handler(req, res) {
     // ── Main query ──
     let query = supabase
       .from("catalog")
-      .select("id, brand, line, model_number, display_name, category, subcategory, material, size_cm, msrp, image_url, source, aliases", { count: "exact" });
+      .select("id, brand, line, model_number, display_name, category, subcategory, material, size_cm, msrp, image_url, source, aliases, year_introduced, movement, case_size_mm, dial_color, bracelet_material, reference_family, gender, limited_edition, description, year_from, year_to", { count: "exact" });
 
     // Category
     if (category && category !== "All") query = query.eq("category", category);
@@ -54,9 +55,16 @@ module.exports = async function handler(req, res) {
     // Subcategory
     if (subcategory) query = query.eq("subcategory", subcategory);
 
-    // Price range (msrp is stored as text in some rows — cast to numeric)
+    // Price range
     if (price_min) query = query.gte("msrp", price_min);
     if (price_max) query = query.lte("msrp", price_max);
+    // Year range
+    if (year_min) query = query.gte("year_introduced", year_min);
+    if (year_max) query = query.lte("year_introduced", year_max);
+    // Movement type (watches)
+    if (movement) query = query.ilike("movement", `%${movement}%`);
+    // Gender
+    if (gender && gender !== "All") query = query.eq("gender", gender);
 
     // ── Text search: try trigram similarity first, fall back to ilike ──
     if (q && q.trim()) {
