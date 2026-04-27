@@ -146,7 +146,11 @@ function makeShopifyScraper(domain, platformName) {
   };
 }
 
-const scrapeFashionphile = makeShopifyScraper("www.fashionphile.com", "Fashionphile");
+const scrapeFashionphile  = makeShopifyScraper("www.fashionphile.com",          "Fashionphile");
+const scrapeAnalogShift   = makeShopifyScraper("www.analogshift.com",            "Analog Shift");
+const scrapeWatchPreserve = makeShopifyScraper("www.thewatchpreserve.com",       "The Watch Preserve");
+const scrapeWatchesNY     = makeShopifyScraper("www.watchesofnewyork.com",       "Watches of New York");
+const scrapeWristAfic     = makeShopifyScraper("www.wristaficionado.com",        "Wrist Aficionado");
 const scrapeRebag        = makeShopifyScraper("shop.rebag.com", "Rebag");
 const scrapeMadisonAve   = makeShopifyScraper("www.madisonavenuecouture.com", "Madison Avenue Couture");
 const scrapePrivePorter  = makeShopifyScraper("www.priveporter.com", "Privé Porter");
@@ -154,50 +158,126 @@ const scrapeAnns         = makeShopifyScraper("www.annsfabulousfinds.com", "Ann'
 const scrapeBeladora     = makeShopifyScraper("www.beladora.com", "Beladora");
 const scrapeLuxeDH       = makeShopifyScraper("www.luxedh.com", "LuxeDH");
 
+// ── eBay Browse API (active BIN listings) ──
+// Requires EBAY_CLIENT_ID + EBAY_CLIENT_SECRET env vars (free eBay developer account)
+let ebayToken = null;
+let ebayTokenExpiry = 0;
+
+async function getEbayToken() {
+  if (ebayToken && Date.now() < ebayTokenExpiry - 60000) return ebayToken;
+  const clientId     = process.env.EBAY_CLIENT_ID;
+  const clientSecret = process.env.EBAY_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return null;
+  try {
+    const creds = Buffer.from(clientId + ":" + clientSecret).toString("base64");
+    const r = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "Authorization": "Basic " + creds },
+      body: "grant_type=client_credentials&scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope",
+    });
+    const d = await r.json();
+    if (d.access_token) {
+      ebayToken = d.access_token;
+      ebayTokenExpiry = Date.now() + (d.expires_in || 7200) * 1000;
+      return ebayToken;
+    }
+  } catch (e) { console.error("[eBay token]", e.message); }
+  return null;
+}
+
 async function scrapeEbay(query, limit) {
   const results = [];
+  const token = await getEbayToken();
+
+  // ── eBay Browse API path (preferred when credentials available) ──
+  if (token) {
+    try {
+      const c = new AbortController();
+      const t = setTimeout(() => c.abort(), 10000);
+      const params = new URLSearchParams({
+        q: query,
+        limit: String(Math.min(limit * 2, 50)),
+        filter: "buyingOptions:{FIXED_PRICE}",
+        sort: "price",
+      });
+      const r = await fetch("https://api.ebay.com/buy/browse/v1/item_summary/search?" + params, {
+        headers: {
+          "Authorization": "Bearer " + token,
+          "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
+          "Content-Type": "application/json",
+        },
+        signal: c.signal,
+      });
+      clearTimeout(t);
+      if (r.ok) {
+        const d = await r.json();
+        const items = d.itemSummaries || [];
+        const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+        for (const item of items) {
+          if (results.length >= limit) break;
+          const name = cleanName(item.title || "");
+          if (!name || name.length < 8) continue;
+          const nameLower = name.toLowerCase();
+          const matchCount = queryWords.filter(w => nameLower.includes(w)).length;
+          const minMatch = queryWords.length <= 1 ? 1 : Math.max(1, Math.floor(queryWords.length * 0.4));
+          if (queryWords.length > 0 && matchCount < minMatch) continue;
+          const price = parseFloat(item.price?.value || "0");
+          if (price < 50) continue;
+          const brand = extractBrand(name) || extractBrand(query);
+          results.push({
+            name, brand: brand || query.split(" ")[0], price,
+            condition: item.condition || "Pre-owned",
+            platform: "eBay",
+            url: item.itemWebUrl || "",
+            imageUrl: item.image?.imageUrl || (item.thumbnailImages && item.thumbnailImages[0] && item.thumbnailImages[0].imageUrl) || "",
+          });
+        }
+        console.log("[eBay Browse API] " + results.length + " results for: " + query);
+        return results;
+      }
+    } catch (e) { console.error("[eBay Browse API]", e.message); }
+  }
+
+  // ── Fallback: HTML scrape (may be blocked from cloud IPs) ──
   try {
     const c = new AbortController();
-    const t = setTimeout(() => c.abort(), 10000);
+    const t = setTimeout(() => c.abort(), 8000);
     const r = await fetch(
-      "https://www.ebay.com/sch/i.html?_nkw=" + encodeURIComponent(query) +
-        "&LH_Sold=1&LH_Complete=1&_sop=13&_ipg=120&rt=nc",
-      { headers: { "User-Agent": UA, Accept: "text/html", "Accept-Language": "en-US,en;q=0.9" }, signal: c.signal }
+      "https://www.ebay.com/sch/i.html?_nkw=" + encodeURIComponent(query) + "&LH_Sold=1&LH_Complete=1&_sop=13&_ipg=60&rt=nc",
+      { headers: { "User-Agent": UA, "Accept": "text/html", "Accept-Language": "en-US,en;q=0.9" }, signal: c.signal }
     );
     clearTimeout(t);
+    if (!r.ok) { console.log("[eBay HTML] blocked:", r.status); return results; }
     const html = await r.text();
     const $ = cheerio.load(html);
     const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-    $("[data-view]").each((i, el) => {
+    $(".s-item, [data-view]").each((i, el) => {
       if (results.length >= limit) return false;
       const $el = $(el);
-      const link = $el.find("a[href*='ebay.com/itm']").first();
+      const link = $el.find("a").filter((i, a) => ($(a).attr("href") || "").includes("ebay.com/itm")).first();
       if (!link.length) return;
-      const rawName = link.text().trim();
-      const name = cleanName(rawName);
+      const name = cleanName(link.attr("title") || link.text().trim());
       if (!name || name.length < 8) return;
       const nameLower = name.toLowerCase();
       const matchCount = queryWords.filter(w => nameLower.includes(w)).length;
-      // Require 40% of query words to match (min 1), looser for short queries
       const minMatch = queryWords.length <= 1 ? 1 : Math.max(1, Math.floor(queryWords.length * 0.4));
       if (queryWords.length > 0 && matchCount < minMatch) return;
-      const text = $el.text();
-      const priceMatch = text.match(/\$([\d,]+\.?\d*)/);
+      const priceMatch = $el.text().match(/\$([\d,]+\.?\d*)/);
       if (!priceMatch) return;
       const price = parseFloat(priceMatch[1].replace(/,/g, ""));
-      if (price <= 0 || price < 100) return;
-      const href = link.attr("href") || "";
-      const img = $el.find("img").attr("src") || "";
+      if (price < 50) return;
       const brand = extractBrand(name) || extractBrand(query);
       results.push({
         name, brand: brand || query.split(" ")[0], price,
         condition: "Pre-owned", platform: "eBay (Sold)",
-        url: href.split("?")[0], imageUrl: img,
+        url: (link.attr("href") || "").split("?")[0],
+        imageUrl: $el.find("img").attr("src") || "",
       });
     });
-  } catch (e) { console.error("[eBay]", e.message); }
+  } catch (e) { console.error("[eBay HTML]", e.message); }
   return results;
 }
+
 
 function aggregate(listings, originalQuery) {
   if (!listings.length) return [];
@@ -283,7 +363,8 @@ module.exports = async function handler(req, res) {
   const limit10 = Math.min(limit, 10);
   const [
     ebayResults, fpResults, rebagResults, macResults,
-    ppResults, annsResults, beladoraResults, luxeResults
+    ppResults, annsResults, beladoraResults, luxeResults,
+    analogResults, watchPresResults, watchesNYResults, wristAficResults,
   ] = await Promise.all([
     scrapeEbay(q, limit).catch(() => []),
     scrapeFashionphile(q, limit).catch(() => []),
@@ -293,24 +374,33 @@ module.exports = async function handler(req, res) {
     scrapeAnns(q, limit10).catch(() => []),
     scrapeBeladora(q, limit10).catch(() => []),
     scrapeLuxeDH(q, limit10).catch(() => []),
+    scrapeAnalogShift(q, limit10).catch(() => []),
+    scrapeWatchPreserve(q, limit10).catch(() => []),
+    scrapeWatchesNY(q, limit10).catch(() => []),
+    scrapeWristAfic(q, limit10).catch(() => []),
   ]);
 
   const all = [
     ...ebayResults, ...fpResults, ...rebagResults, ...macResults,
-    ...ppResults, ...annsResults, ...beladoraResults, ...luxeResults
+    ...ppResults, ...annsResults, ...beladoraResults, ...luxeResults,
+    ...analogResults, ...watchPresResults, ...watchesNYResults, ...wristAficResults,
   ];
   const items = aggregate(all, q);
 
   const activePlatforms = Object.fromEntries(
     Object.entries({
-      ebay: { name: "eBay (Sold)", count: ebayResults.length },
-      fashionphile: { name: "Fashionphile", count: fpResults.length },
-      rebag: { name: "Rebag", count: rebagResults.length },
-      madisonave: { name: "Madison Avenue Couture", count: macResults.length },
-      priveporter: { name: "Privé Porter", count: ppResults.length },
-      anns: { name: "Ann's Fabulous Finds", count: annsResults.length },
-      beladora: { name: "Beladora", count: beladoraResults.length },
-      luxedh: { name: "LuxeDH", count: luxeResults.length },
+      ebay:        { name: "eBay (Sold)",            count: ebayResults.length },
+      fashionphile:{ name: "Fashionphile",            count: fpResults.length },
+      rebag:       { name: "Rebag",                   count: rebagResults.length },
+      madisonave:  { name: "Madison Avenue Couture",  count: macResults.length },
+      priveporter: { name: "Privé Porter",            count: ppResults.length },
+      anns:        { name: "Ann's Fabulous Finds",    count: annsResults.length },
+      beladora:    { name: "Beladora",                count: beladoraResults.length },
+      luxedh:      { name: "LuxeDH",                  count: luxeResults.length },
+      analogshift: { name: "Analog Shift",            count: analogResults.length },
+      watchpreserve:{ name: "The Watch Preserve",     count: watchPresResults.length },
+      watchesny:   { name: "Watches of New York",     count: watchesNYResults.length },
+      wristafic:   { name: "Wrist Aficionado",        count: wristAficResults.length },
     }).filter(([, v]) => v.count > 0)
   );
 
