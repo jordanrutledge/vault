@@ -305,7 +305,7 @@ function CatalogBrowse({
   filterMinPrice, setFilterMinPrice, filterMaxPrice, setFilterMaxPrice,
   sortBy, setSortBy, platformInfo, setDetailModal, inputRef,
 }) {
-  const BROWSE_CATS = ["All","Watches","Handbags","Jewelry","Shoes","Small Leather Goods"];
+  const BROWSE_CATS = ["All","Watches","Handbags","Clothing","Shoes","Jewelry","Small Leather Goods","Accessories"];
   const SORT_OPTIONS = [
     { value:"popular",    label:"Most Popular" },
     { value:"name",       label:"Name A–Z" },

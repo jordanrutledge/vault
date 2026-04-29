@@ -6,15 +6,22 @@ const supabase = SUPABASE_URL && SUPABASE_KEY ? createClient(SUPABASE_URL, SUPAB
 
 // Canonical brand/subcat lists for sidebar facets
 const BRAND_MAP = {
-  Watches:            ["Rolex","Omega","Longines","Breitling","Cartier","Seiko","TAG Heuer","Hublot","Patek Philippe","Audemars Piguet","IWC","Panerai","Tudor","Jaeger-LeCoultre","Zenith","Oris","Vacheron Constantin","Hamilton","Grand Seiko","Blancpain","Breguet","Piaget","Richard Mille","A. Lange & Söhne"],
-  Handbags:           ["Louis Vuitton","Chanel","Hermès","Gucci","Prada","Dior","Saint Laurent","Bottega Veneta","Celine","Goyard","Fendi","Loewe","Miu Miu","Balenciaga","Givenchy","Valentino","Chloe","Burberry"],
-  Jewelry:            ["Cartier","Van Cleef & Arpels","Tiffany","Bulgari","Chanel","Chopard","David Yurman","Harry Winston"],
-  Shoes:              ["Christian Louboutin","Gucci","Prada","Chanel","Louis Vuitton","Valentino","Balenciaga","Saint Laurent","Dior","Manolo Blahnik"],
-  "Small Leather Goods": ["Louis Vuitton","Hermès","Chanel","Gucci","Prada","Goyard"],
+  Watches:             ["Rolex","Omega","Longines","Breitling","Cartier","Seiko","TAG Heuer","Hublot","Patek Philippe","Audemars Piguet","IWC","Panerai","Tudor","Jaeger-LeCoultre","Zenith","Oris","Vacheron Constantin","Hamilton","Grand Seiko","Blancpain","Breguet","Piaget","Richard Mille","A. Lange & Söhne"],
+  Handbags:            ["Louis Vuitton","Chanel","Hermès","Gucci","Prada","Dior","Saint Laurent","Bottega Veneta","Celine","Goyard","Fendi","Loewe","Miu Miu","Balenciaga","Givenchy","Valentino","Chloe","Burberry"],
+  Clothing:            ["Gucci","Saint Laurent","Bottega Veneta","Balenciaga","Moncler","Tom Ford","The Row","Brunello Cucinelli","Loro Piana","Loewe","Burberry","Prada","Valentino","Givenchy","Acne Studios","Isabel Marant","Alexander McQueen","Rick Owens","Celine","Dior","Jacquemus","Off-White","Fear of God"],
+  Shoes:               ["Christian Louboutin","Gucci","Prada","Chanel","Louis Vuitton","Valentino","Balenciaga","Saint Laurent","Dior","Manolo Blahnik","Bottega Veneta","Nike","Adidas","Common Projects","Golden Goose"],
+  Jewelry:             ["Cartier","Van Cleef & Arpels","Tiffany","Bulgari","Chanel","Chopard","David Yurman","Harry Winston"],
+  "Small Leather Goods":["Louis Vuitton","Hermès","Chanel","Gucci","Prada","Goyard","Bottega Veneta","Saint Laurent"],
+  Accessories:         ["Hermès","Chanel","Louis Vuitton","Gucci","Prada","Dior","Burberry","Acne Studios","Saint Laurent","Rimowa","Loewe"],
 };
 const SUBCAT_MAP = {
-  Watches:  ["Sport","Chronograph","Dress","Pilot","Complication"],
-  Handbags: ["Birkin","Kelly","Classic Flap","Boy Bag","Neverfull","Speedy","Pochette","Wallet on Chain","Shoulder Bag","Tote","Crossbody","Clutch","Backpack"],
+  Watches:  ["Sport","Chronograph","Dress","Pilot","Complication","GMT","Diver","Tourbillon","Ladies"],
+  Handbags: ["Tote","Shoulder Bag","Crossbody","Clutch","Backpack","Mini Bag","Bucket Bag","Top Handle","Belt Bag","Evening Bag"],
+  Clothing: ["Jackets & Coats","Tops","Bottoms","Dresses & Skirts","Knitwear & Sweatshirts","Suits","Swimwear","Activewear"],
+  Shoes:    ["Sneakers","Heels","Boots","Loafers","Sandals","Flats","Mules","Slides","Slingbacks","Espadrilles"],
+  Jewelry:  ["Rings","Necklaces","Bracelets","Earrings","Brooches","Sets"],
+  "Small Leather Goods": ["Wallet","Cardholder","Key Holder","Coin Purse","Passport Holder","Belt"],
+  Accessories: ["Sunglasses","Scarves","Belts","Hats","Gloves","Luggage","Cufflinks","Pocket Squares"],
 };
 
 // ── Clean noisy Shopify display names into canonical catalog names ──
