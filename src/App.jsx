@@ -949,25 +949,32 @@ function CatalogItemModal({ item, catalogItem, liveData, onClose, onGetLive, onA
   const ci      = catalogItem || item; // catalog-enriched version
 
   // Build specs list from catalog fields
-  const specs = [
-    ci.category       && ["Category",      ci.category],
-    ci.subcategory    && ["Type",           ci.subcategory],
-    ci.reference_family && ["Family",       ci.reference_family],
-    ci.model_number   && ["Reference",      ci.model_number],
-    ci.movement       && ["Movement",       ci.movement],
-    ci.case_size_mm   && ["Case Size",      ci.case_size_mm + "mm"],
-    ci.dial_color     && ["Dial",           ci.dial_color],
-    ci.material       && ["Material",       ci.material],
-    ci.bracelet_material && ["Bracelet",    ci.bracelet_material],
-    ci.gender         && ["Gender",         ci.gender],
-    (ci.year_introduced || ci.year_from) && ["Year",
-      ci.year_introduced ? String(ci.year_introduced) :
-      ci.year_from && ci.year_to ? ci.year_from + "–" + ci.year_to :
-      ci.year_from ? ci.year_from + "+" : ""],
-    ci.limited_edition && ["Edition",       "Limited Edition"],
-    ci.size_cm        && ["Size",           ci.size_cm],
-    ci.msrp           && ["Retail (MSRP)",  fmt(ci.msrp)],
-  ].filter(Boolean);
+  // Build specs from all available catalog columns — only show non-null
+  const specDefs = [
+    ["Category",      ci.category],
+    ["Style",         ci.subcategory],
+    ["Reference",     ci.reference_family || ci.model_number],
+    ["Movement",      ci.movement],
+    ["Case Size",     ci.case_size_mm ? ci.case_size_mm + "mm" : null],
+    ["Dial",          ci.dial_color],
+    ["Material",      ci.material],
+    ["Bracelet",      ci.bracelet_material],
+    ["Size",          ci.size_cm],
+    ["Gender",        ci.gender],
+    ["Year",          ci.year_introduced ? String(ci.year_introduced)
+                      : ci.year_from && ci.year_to ? ci.year_from + "–" + ci.year_to
+                      : ci.year_from ? ci.year_from + "+"
+                      : null],
+    ["Edition",       ci.limited_edition ? "Limited Edition" : null],
+    ["Description",   ci.description],
+    ["Retail (MSRP)", ci.msrp ? fmt(ci.msrp) : null],
+    ["Source",        ci.source === "chrono24-kaggle" ? "Chrono24 / Kaggle"
+                      : ci.source === "watchbase" ? "WatchBase"
+                      : ci.source === "enriched" ? "AI Discovery"
+                      : ci.source ? ci.source.replace(/-/g," ").replace(/\w/g,c=>c.toUpperCase())
+                      : null],
+  ];
+  const specs = specDefs.filter(([, v]) => v !== null && v !== undefined && v !== "");
 
   const imgSrc = (hasLive && live.imageUrl) ? live.imageUrl : ci.image_url || item.imageUrl;
 

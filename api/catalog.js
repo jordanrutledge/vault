@@ -17,6 +17,28 @@ const SUBCAT_MAP = {
   Handbags: ["Birkin","Kelly","Classic Flap","Boy Bag","Neverfull","Speedy","Pochette","Wallet on Chain","Shoulder Bag","Tote","Crossbody","Clutch","Backpack"],
 };
 
+// ── Clean noisy Shopify display names into canonical catalog names ──
+function cleanDisplayName(name, brand) {
+  if (!name) return name;
+  let n = name;
+
+  // Remove brand prefix if duplicated at start
+  if (brand) {
+    const brandRe = new RegExp("^" + brand.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*", "i");
+    n = n.replace(brandRe, "").trim();
+  }
+
+  // Strip trailing/leading garbage
+  n = n
+    .replace(/\s*-\s*\.jpg.*$/i, "")
+    .replace(/\s*\|\s*.*$/, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  if (!n || n.length < 3) n = name;
+  return n.charAt(0).toUpperCase() + n.slice(1);
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
@@ -134,8 +156,13 @@ module.exports = async function handler(req, res) {
       subcatFacets = Object.entries(sc).sort((a,b) => b[1]-a[1]).map(([name,cnt]) => ({ name, count: cnt }));
     }
 
+    const cleanedItems = (items || []).map(item => ({
+      ...item,
+      display_name: cleanDisplayName(item.display_name, item.brand),
+    }));
+
     return res.status(200).json({
-      items:       items || [],
+      items:       cleanedItems,
       total:       totalFound,
       page:        pageNum,
       pageSize,

@@ -312,6 +312,18 @@ function aggregate(listings, originalQuery) {
       const iqr = q3 - q1;
       cleanPrices = prices.filter(p => p >= q1 - 1.5 * iqr && p <= q3 + 1.5 * iqr);
       if (!cleanPrices.length) cleanPrices = prices;
+    } else if (prices.length >= 2) {
+      // For 2-3 listings: drop any price more than 3x the minimum (outlier floor)
+      const minP = Math.min(...prices);
+      const maxP = Math.max(...prices);
+      // If spread is huge (>5x), trust the lower prices more
+      if (maxP > minP * 5) {
+        cleanPrices = prices.filter(p => p <= minP * 4);
+        if (!cleanPrices.length) cleanPrices = [minP];
+      }
+    } else if (prices.length === 1) {
+      // Single listing: no filtering possible, just use it
+      cleanPrices = prices;
     }
     const avg = Math.round(cleanPrices.reduce((s, p) => s + p, 0) / cleanPrices.length);
     const sources = [...new Set(g.listings.map(l => l.platform))];
