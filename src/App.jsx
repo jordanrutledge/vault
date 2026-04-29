@@ -648,11 +648,13 @@ function CatalogBrowse({
               onError={e => { e.target.style.display="none"; e.target.nextSibling && (e.target.nextSibling.style.display="flex"); }} />
           ) : null}
           {/* Placeholder — shown when no image or img fails */}
-          <div style={{ display: imgSrc ? "none" : "flex", position:"absolute", inset:0, alignItems:"center", justifyContent:"center", flexDirection:"column", gap:6 }}>
-            <div style={{ fontFamily:SERIF, fontSize:32, color:C.textDim, opacity:0.15 }}>
-              {item.category==="Watches" ? "◷" : item.category==="Handbags" ? "◻" : item.category==="Jewelry" ? "◇" : "○"}
+          <div style={{ display: imgSrc ? "none" : "flex", position:"absolute", inset:0, alignItems:"center", justifyContent:"center", flexDirection:"column", gap:4, padding:"12px" }}>
+            <div style={{ fontFamily:SERIF, fontSize:28, color:C.textDim, opacity:0.2 }}>
+              {item.category==="Watches" ? "◷" : item.category==="Handbags" ? "◻" : item.category==="Jewelry" ? "◇" : item.category==="Shoes" ? "◁" : item.category==="Clothing" ? "◈" : "○"}
             </div>
-            {item.model_number && <div style={{ fontFamily:MONO, fontSize:8, color:C.textDim, letterSpacing:"0.1em" }}>{item.model_number}</div>}
+            <div style={{ fontFamily:MONO, fontSize:8, color:C.textDim, opacity:0.4, letterSpacing:"0.1em", textAlign:"center", lineHeight:1.4 }}>
+              {item.model_number || item.subcategory || item.category}
+            </div>
           </div>
           {owned && (
             <div style={{ position:"absolute", top:8, right:8, padding:"3px 7px", background:g(0.25), border:`1px solid ${g(0.4)}`, fontFamily:MONO, fontSize:7, color:C.gold, letterSpacing:"0.08em" }}>

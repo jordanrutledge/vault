@@ -147,6 +147,7 @@ function makeShopifyScraper(domain, platformName) {
 }
 
 const scrapeFashionphile  = makeShopifyScraper("www.fashionphile.com",          "Fashionphile");
+const scrapeAntonioli     = makeShopifyScraper("www.antonioli.eu",              "Antonioli");
 const scrapeAnalogShift   = makeShopifyScraper("www.analogshift.com",            "Analog Shift");
 const scrapeWatchPreserve = makeShopifyScraper("www.thewatchpreserve.com",       "The Watch Preserve");
 const scrapeWatchesNY     = makeShopifyScraper("www.watchesofnewyork.com",       "Watches of New York");
@@ -390,12 +391,14 @@ module.exports = async function handler(req, res) {
     scrapeWatchPreserve(q, limit10).catch(() => []),
     scrapeWatchesNY(q, limit10).catch(() => []),
     scrapeWristAfic(q, limit10).catch(() => []),
+    scrapeAntonioli(q, limit10).catch(() => []),
   ]);
 
   const all = [
     ...ebayResults, ...fpResults, ...rebagResults, ...macResults,
     ...ppResults, ...annsResults, ...beladoraResults, ...luxeResults,
     ...analogResults, ...watchPresResults, ...watchesNYResults, ...wristAficResults,
+    ...antonioliResults,
   ];
   const items = aggregate(all, q);
 
@@ -413,6 +416,7 @@ module.exports = async function handler(req, res) {
       watchpreserve:{ name: "The Watch Preserve",     count: watchPresResults.length },
       watchesny:   { name: "Watches of New York",     count: watchesNYResults.length },
       wristafic:   { name: "Wrist Aficionado",        count: wristAficResults.length },
+      antonioli:   { name: "Antonioli",               count: antonioliResults.length },
     }).filter(([, v]) => v.count > 0)
   );
 
